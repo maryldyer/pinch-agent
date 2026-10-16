@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+// pinch-react — add/remove an iMessage tapback (reaction) on a Plow message.
+//
+// Usage:
+//   pinch-react <chat_uid> <message_uid> <emoji> [add|remove]
+//   pinch-react <chat_uid> latest       <emoji> [add|remove]   # react to the newest INBOUND msg
+//
+// operation defaults to `add`; type is always `custom` (the emoji is sent as
+// custom_emoji). On this line `add` REPLACES this actor's prior reaction, so
+// going 👀 → ✅ is just a second `add`.
+//
+// POST $PLOW_API_BASE/v1/chats/{chat}/messages/{message}/reactions
+//   { operation, type:"custom", custom_emoji:<emoji>, part_index:0 }
+//   Authorization: Bearer $PLOW_AGENT_TOKEN
+//
+// Reactions are cosmetic, so this helper is FAIL-SOFT: any problem prints a note
+// to stderr and exits 0 — the capture flow must never break because a tapback
+// didn't land. Dependency-light (Node global fetch). Both env vars are injected
+// into the container by Plow (plow-credentials).
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+
+const note = (msg) => process.stderr.write(`pinch-react: ${msg}\n`);
+const softExit = (msg) => { if (msg) note(msg); process.exit(0); }; // non-fatal by design
+
+const [chatUid, messageArg, emoji, opArg] = process.argv.slice(2);
+if (!chatUid || !messageArg || !emoji) {
+  note('usage: pinch-react <chat_uid> <message_uid|latest> <emoji> [add|remove]');
+  process.exit(0); // still non-fatal — a misuse shouldn't break the turn
+}
+const operation = opArg === 'remove' ? 'remove' : 'add';
+
+const rawBase = (process.env.PLOW_API_BASE || '').trim();
+const token = (process.env.PLOW_AGENT_TOKEN || '').trim();
+if (!rawBase) softExit('PLOW_API_BASE not set; skipping reaction');
+if (!token || token === 'proxied') softExit('no usable PLOW_AGENT_TOKEN; skipping reaction');
+// PLOW_API_BASE is the root WITHOUT /v1; normalize then append /v1.
+const base = rawBase.replace(/\/+$/, '').replace(/\/v1$/, '');
+
+async function api(path, init) {
+  const res = await fetch(`${base}/v1${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init && init.headers) },
+    signal: AbortSignal.timeout(15000),
+  });
+  return res;
+}
+
+async function resolveLatestInbound(chat) {
+  // Newest message from a member (the owner), i.e. an inbound message — the one
+  // the agent is reacting to. Falls back to the newest message if direction/
+  // sender shapes differ.
+  const res = await api(`/chats/${encodeURIComponent(chat)}/messages?limit=10`);
+  if (!res.ok) throw new Error(`list messages HTTP ${res.status}`);
+  const data = (await res.json()).data || [];
+  const inbound = data.find((m) =>
+    (m.sender && m.sender.type === 'member') || m.direction === 'inbound' || m.direction === 'incoming');
+  const picked = inbound || data[0];
+  if (!picked || !picked.uid) throw new Error('no messages found in chat');
+  return picked.uid;
+}
+
+(async () => {
+  let messageUid = messageArg;
+  try {
+    if (messageArg === 'latest' || messageArg === '-') messageUid = await resolveLatestInbound(chatUid);
+  } catch (e) {
+    softExit(`could not resolve latest inbound message: ${e.message}`);
+  }
+
+  try {
+    const res = await api(
+      `/chats/${encodeURIComponent(chatUid)}/messages/${encodeURIComponent(messageUid)}/reactions`,
+      { method: 'POST', body: JSON.stringify({ operation, type: 'custom', custom_emoji: emoji, part_index: 0 }) },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      softExit(`reaction ${operation} ${emoji} failed: HTTP ${res.status} ${body.slice(0, 200)}`);
+    }
+    note(`reaction ${operation} ${emoji} on ${messageUid} ok`);
+    process.exit(0);
+  } catch (e) {
+    softExit(`reaction request error: ${e.message}`);
+  }
+})();

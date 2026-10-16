@@ -23,6 +23,12 @@ the token yourself.
   live there), downloads the video, and samples ~10–15 frames to JPEG files.
   Prints the text plus a `FRAMES (N):` list of image paths and a
   `STATUS: downloaded | download blocked` line. No audio transcription.
+- `pinch-react <chat_uid> <message_uid> <emoji> [add|remove]` — put an iMessage
+  tapback on a message (reads `PLOW_API_BASE` + `PLOW_AGENT_TOKEN` from the env,
+  not the Pinch ones). `add` replaces your prior reaction on that message, so
+  👀 → ✅ is just a second `add`. Fail-soft: if it can't react it exits quietly.
+  Pass the inbound message's uid, or `latest` to react to the newest inbound
+  message in the chat.
 - `pinch-search "<query>"` — search the library (for the dedup check). Prints
   `id<TAB>title<TAB>sourceUrl` per match.
 - `pinch-get <id>` — read one full recipe as JSON (used when updating).
@@ -33,6 +39,19 @@ the token yourself.
   every nullable field you leave out to `null`. It prints the saved recipe.
 
 ## Steps
+
+0. **Acknowledge immediately with a 👀 tapback.** As soon as you see the owner
+   sent something to capture (a recipe URL, a photo, a social/video post, pasted
+   recipe text), react to THAT inbound message with 👀 so they know you're on it:
+   `pinch-react <chat_uid> <message_uid> 👀`.
+   - **Where the ids come from:** they're the current turn's inbound message. The
+     chat uid is this conversation's id — the same id you'd use to reply here
+     (Plow exposes it as the conversation / `nativeChannelId`). The message uid is
+     the inbound message's own id (`messageId`). If you have the chat uid but not
+     the exact message id, use `pinch-react <chat_uid> latest 👀` — it reacts to
+     the newest inbound message in this chat.
+   - This is cosmetic and fail-soft: if the reaction doesn't land, say nothing and
+     carry on. Only do it for a capture; don't tapback ordinary chit-chat.
 
 1. **Identify the input type and extract a recipe.**
    - **URL** (links arrive as plain text): `pinch-fetch <url>`. Prefer the
@@ -76,9 +95,16 @@ the token yourself.
      into it (keep its `id` and `createdAt`), and `pinch-save` the merged object.
      Upsert replaces the whole recipe, so include the fields you want to keep.
 
-4. **Save.** Write the JSON and run `pinch-save`. On success, confirm in one
-   short line led by a chef + check: `🧑‍🍳✅ <title>, <N> ingredients` (count or
-   source optional).
+4. **Save, then flip the tapback to ✅.** Write the JSON and run `pinch-save`.
+   On success:
+   - change your 👀 reaction on the inbound message to ✅:
+     `pinch-react <chat_uid> <message_uid> ✅` (a second `add` replaces the 👀;
+     use the same ids from step 0, or `latest`). Fail-soft — skip silently if it
+     doesn't land.
+   - AND send the text confirmation in one short line led by a chef + check:
+     `🧑‍🍳✅ <title>, <N> ingredients` (count or source optional). Keep both — the
+     tapback is the quick ack, the text line is the real confirmation.
+   - If the save failed, do NOT flip to ✅; tell the owner plainly (per Errors).
 
 ## Errors (never drop the owner's input)
 
