@@ -1,0 +1,149 @@
+#!/usr/bin/env node
+// pinch-video — extract a recipe from a social video (TikTok / Reel / Short / etc.)
+// as TEXT + sampled FRAMES for the vision model. No audio transcription.
+//
+// Usage:
+//   pinch-video <url> [--max-frames N] [--dir <workdir>]
+//
+// It gathers, best-effort and fail-soft:
+//   1. caption/title, full description, uploader, and pinned/top comments
+//      (recipes are often in the description or a pinned comment), via yt-dlp;
+//   2. the video itself, from which it samples ~1 frame every 2.5s, capped
+//      (default 12, max 15), scaled to 640px wide, written as JPEGs — the agent
+//      then reads those frames with its vision model for on-screen ingredient/
+//      step overlays.
+//
+// If the platform blocks the download, it still prints whatever TEXT it got and
+// a clear `STATUS: download blocked` signal instead of crashing — the agent
+// works from the text and asks the user for what's genuinely missing.
+//
+// Deps: yt-dlp + ffmpeg/ffprobe (installed in the image). Reads no secrets.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { spawnSync } = require('node:child_process');
+const { mkdtempSync, readdirSync, existsSync, mkdirSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const path = require('node:path');
+
+function warn(msg) { process.stderr.write(`pinch-video: ${msg}\n`); }
+function die(msg, code = 1) { warn(msg); process.exit(code); }
+
+const argv = process.argv.slice(2);
+let url = null, maxFrames = 12, workdir = null;
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--max-frames') maxFrames = Math.max(1, Math.min(15, parseInt(argv[++i], 10) || 12));
+  else if (argv[i] === '--dir') workdir = argv[++i];
+  else if (!url) url = argv[i];
+}
+if (!url) die('usage: pinch-video <url> [--max-frames N] [--dir <workdir>]', 2);
+try { const u = new URL(url); if (!/^https?:$/.test(u.protocol)) throw 0; }
+catch { die(`not a valid http(s) URL: ${url}`, 2); }
+
+// ffmpeg/ffprobe use `-version` (single dash); yt-dlp uses `--version`.
+const ok = (bin, arg) => spawnSync(bin, [arg], { encoding: 'utf8' }).status === 0;
+if (!ok('yt-dlp', '--version')) die('yt-dlp is not installed in this image', 2);
+const haveFfmpeg = ok('ffmpeg', '-version') && ok('ffprobe', '-version');
+
+if (workdir) mkdirSync(workdir, { recursive: true });
+else workdir = mkdtempSync(path.join(tmpdir(), 'pinch-video-'));
+
+const run = (bin, args, timeoutMs) =>
+  spawnSync(bin, args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: timeoutMs });
+
+// --- 1. Metadata + comments (best-effort) --------------------------------
+let info = null;
+const meta = run('yt-dlp', [
+  '-J', '--no-warnings', '--no-playlist', '--write-comments',
+  '--extractor-args', 'youtube:max_comments=40,all,0;comment_sort=top',
+  url,
+], 120000);
+if (meta.status === 0 && meta.stdout) {
+  try { info = JSON.parse(meta.stdout); } catch { /* fall through */ }
+}
+if (!info) {
+  // Retry without comments — comment extraction is the flakiest part.
+  const meta2 = run('yt-dlp', ['-J', '--no-warnings', '--no-playlist', url], 90000);
+  if (meta2.status === 0 && meta2.stdout) { try { info = JSON.parse(meta2.stdout); } catch { /* ignore */ } }
+}
+
+// --- 2. Download + frame sampling (fail-soft) ----------------------------
+let status = 'download blocked';
+let frames = [];
+const dl = run('yt-dlp', [
+  '--no-warnings', '--no-playlist', '--no-part',
+  '-f', 'mp4/bestvideo*+bestaudio/best',
+  '-o', path.join(workdir, 'video.%(ext)s'),
+  url,
+], 180000);
+const videoFile = existsSync(workdir)
+  ? readdirSync(workdir).filter((f) => /^video\./.test(f)).map((f) => path.join(workdir, f))[0]
+  : undefined;
+
+if (dl.status === 0 && videoFile) {
+  status = 'downloaded';
+  if (!haveFfmpeg) {
+    warn('ffmpeg/ffprobe missing — downloaded video but cannot sample frames');
+  } else {
+    const probe = run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=nk=1:nw=1', videoFile], 30000);
+    const duration = parseFloat((probe.stdout || '').trim()) || 0;
+    const target = Math.max(5, Math.min(maxFrames, Math.ceil(duration / 2.5) || maxFrames));
+    const fps = duration > 0 ? (target / duration) : 0.5; // ~1 frame / 2.5s, else 1 / 2s
+    const ff = run('ffmpeg', ['-nostdin', '-v', 'error', '-i', videoFile,
+      '-vf', `fps=${fps.toFixed(4)},scale=640:-1`, '-frames:v', String(target),
+      path.join(workdir, 'frame_%03d.jpg')], 120000);
+    if (ff.status !== 0) warn(`ffmpeg frame extraction failed: ${(ff.stderr || '').trim().slice(0, 300)}`);
+    frames = readdirSync(workdir).filter((f) => /^frame_\d+\.jpg$/.test(f)).sort()
+      .map((f) => path.join(workdir, f));
+  }
+} else {
+  warn(`download blocked/failed: ${(dl.stderr || '').trim().split('\n').slice(-2).join(' ').slice(0, 300)}`);
+}
+
+// --- 3. Report -----------------------------------------------------------
+const out = [];
+out.push(`STATUS: ${status}`);
+out.push(`WORKDIR: ${workdir}`);
+if (info) {
+  const title = info.title || info.fulltitle || '';
+  const uploader = info.uploader || info.channel || info.uploader_id || '';
+  if (title) out.push(`TITLE: ${title}`);
+  if (uploader) out.push(`UPLOADER: ${uploader}`);
+  out.push(`URL: ${info.webpage_url || url}`);
+  const desc = (info.description || '').trim();
+  out.push('', 'DESCRIPTION:', desc ? desc.slice(0, 6000) : '(none)');
+
+  const comments = Array.isArray(info.comments) ? info.comments : [];
+  if (comments.length) {
+    const pinned = comments.filter((c) => c && (c.is_pinned || c.pinned));
+    const rest = comments.filter((c) => c && !(c.is_pinned || c.pinned))
+      .sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+    const picked = [...pinned, ...rest].slice(0, 12);
+    out.push('', `PINNED/TOP COMMENTS (${picked.length} of ${comments.length}):`);
+    for (const c of picked) {
+      const tag = (c.is_pinned || c.pinned) ? '[pinned] ' : '';
+      const likes = c.like_count ? ` (${c.like_count} likes)` : '';
+      out.push(`- ${tag}${c.author || 'user'}${likes}: ${String(c.text || '').replace(/\s+/g, ' ').trim().slice(0, 500)}`);
+    }
+  } else {
+    out.push('', 'PINNED/TOP COMMENTS: (none retrieved — recipe may be in description or on-screen)');
+  }
+} else {
+  out.push('', 'TEXT METADATA: (none retrieved — extractor returned nothing)');
+}
+
+out.push('', frames.length
+  ? `FRAMES (${frames.length}) — read these image files with your vision model for on-screen ingredients/steps:`
+  : 'FRAMES (0): no frames sampled.');
+for (const f of frames) out.push(f);
+
+if (status === 'download blocked') {
+  out.push('', 'NOTE: the video could not be downloaded (platform block / login-walled / region). '
+    + 'Work from the text above; if the recipe is incomplete, tell the user what is missing and ask them '
+    + 'to paste the steps or send a photo.');
+}
+
+process.stdout.write(out.join('\n') + '\n');
+
+// Exit 0 if we produced anything usable (text or frames); non-zero only on total failure.
+if (!info && frames.length === 0) die('no text and no frames could be extracted from the video', 4);

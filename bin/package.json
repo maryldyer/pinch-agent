@@ -1,0 +1,4 @@
+{
+  "comment": "Marks the helper scripts as CommonJS. The base image ships /opt/plow/package.json with \"type\":\"module\", and these extensionless scripts live under /opt/plow/pinch-bin at runtime; without this nearer package.json Node would treat them as ES modules and `require` would throw.",
+  "type": "commonjs"
+}

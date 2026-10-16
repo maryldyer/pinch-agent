@@ -1,20 +1,26 @@
 #!/usr/bin/env node
-// pinch-fetch — fetch a recipe/social URL and print its content for extraction.
+// pinch-fetch — fetch a recipe/social URL and print its content for extraction,
+// with paywall/overlay robustness (the same family of techniques Paprika and
+// recipe_scrapers use for personal recipe capture).
 //
 // Usage:
 //   pinch-fetch <url>
 //
-// The OpenClaw base has no web-fetch tool, so the capture skill uses this to
-// pull a page the user texted (links arrive as plain text). It prints, in order:
-//   1. Any JSON-LD (<script type="application/ld+json">) blocks — the preferred
-//      extraction source (schema.org/Recipe). Clearly delimited.
-//   2. A tag-stripped text rendering of the page body, truncated for context.
-// The agent then prefers the JSON-LD; if absent, it reads the text.
+// It tries strategies in order and keeps the FULLEST result, stopping early as
+// soon as it finds a usable schema.org/Recipe:
+//   1. Direct fetch, browser User-Agent — parse raw HTML + JSON-LD. Bypasses
+//      most JS/CSS overlay "paywalls" because the Recipe JSON-LD is in the HTML.
+//   2. Crawler fetch — Googlebot User-Agent + Google referrer. Many sites serve
+//      full content (and JSON-LD) to crawlers even when the browser view is gated.
+//   3. print / AMP variants — lighter templates that often skip the gate.
+//   4. Reader/cache — r.jina.ai reader (clean text), then archive.ph — for pages
+//      that only render content client-side or hard-gate the above.
 //
-// Dependency-light: Node's global fetch + regex. No HTML parser. Follows
-// redirects and sends a browser-ish User-Agent. Reads no env (no auth needed).
+// Output (stdout): any JSON-LD blocks first (prefer schema.org/Recipe), then a
+// tag-stripped PAGE TEXT rendering. The winning strategy is logged to stderr.
+// The agent prefers the JSON-LD; if absent, it reads the text. Deps: Node fetch
+// + regex only. Reads no secrets.
 'use strict';
-// Exit cleanly if a downstream consumer (e.g. `head`) closes the pipe early.
 process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
 const MAX_TEXT = Number(process.env.PINCH_FETCH_MAX_CHARS || 40000);
 
@@ -25,65 +31,125 @@ let parsed;
 try { parsed = new URL(url); } catch { die(`not a valid URL: ${url}`, 2); }
 if (!/^https?:$/.test(parsed.protocol)) die('only http(s) URLs are supported', 2);
 
-(async () => {
-  let res;
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+async function get(u, { ua, referer } = {}) {
   try {
-    res = await fetch(url, {
+    const res = await fetch(u, {
       redirect: 'follow',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'User-Agent': ua || BROWSER_UA,
         Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+        ...(referer ? { Referer: referer } : {}),
       },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(25000),
     });
+    const body = await res.text();
+    return { ok: res.ok, status: res.status, ctype: res.headers.get('content-type') || '', body };
   } catch (e) {
-    die(`could not fetch ${url}: ${e.message} — tell the user the page could not be loaded`, 4);
+    return { ok: false, status: 0, ctype: '', body: '', error: e.message };
   }
-  if (!res.ok) die(`fetch returned HTTP ${res.status} for ${url} (paywall/blocked?) — report the limit to the user`, 1);
+}
 
-  const ctype = res.headers.get('content-type') || '';
-  const body = await res.text();
-  process.stderr.write(`fetched ${url} (${res.status}, ${ctype || 'unknown type'}, ${body.length} chars)\n`);
-
-  // If the response is itself JSON, just print it — many recipe/social APIs do this.
-  if (ctype.includes('application/json')) {
-    process.stdout.write(body.slice(0, MAX_TEXT) + (body.length > MAX_TEXT ? '\n…[truncated]…\n' : '\n'));
-    return;
-  }
-
-  // 1) JSON-LD blocks (preferred extraction source).
-  const ldBlocks = [];
-  const ldRe = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+function extractJsonLd(html) {
+  const blocks = [];
+  const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m;
-  while ((m = ldRe.exec(body)) !== null) {
-    const raw = m[1].trim();
-    if (raw) ldBlocks.push(raw);
+  while ((m = re.exec(html)) !== null) { const raw = m[1].trim(); if (raw) blocks.push(raw); }
+  return blocks;
+}
+
+function hasRecipe(ldBlocks) {
+  for (const raw of ldBlocks) {
+    let data; try { data = JSON.parse(raw); } catch { continue; }
+    const nodes = [];
+    const visit = (n) => {
+      if (Array.isArray(n)) n.forEach(visit);
+      else if (n && typeof n === 'object') { nodes.push(n); if (n['@graph']) visit(n['@graph']); }
+    };
+    visit(data);
+    for (const n of nodes) {
+      const t = n['@type'];
+      const types = Array.isArray(t) ? t : [t];
+      if (types.includes('Recipe') && (n.recipeIngredient || n.recipeInstructions)) return true;
+    }
   }
-  if (ldBlocks.length) {
-    process.stdout.write(`===== JSON-LD (${ldBlocks.length} block(s); prefer schema.org/Recipe) =====\n`);
-    for (const b of ldBlocks) process.stdout.write(b + '\n');
+  return false;
+}
+
+function stripText(html) {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
+    || html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i);
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
+  return { title: titleMatch ? titleMatch[1].trim() : '', desc: descMatch ? descMatch[1].trim() : '', text };
+}
+
+function printVariants(u) {
+  const out = [];
+  try {
+    const p = new URL(u);
+    const q = new URL(u); q.searchParams.set('print', '1'); out.push(q.href);
+    const amp = new URL(u); amp.pathname = amp.pathname.replace(/\/$/, '') + '/amp'; out.push(amp.href);
+    out.push(`https://${p.host}${p.pathname.replace(/\/$/, '')}/print/${p.search}`);
+  } catch { /* ignore */ }
+  return out;
+}
+
+function evaluate(strategy, u, res) {
+  if (!res.ok || !res.body) return null;
+  // JSON responses: treat the body as the text payload.
+  if (res.ctype.includes('application/json')) {
+    return { strategy, url: u, ld: [], meta: { title: '', desc: '', text: res.body }, recipe: false, score: res.body.length };
+  }
+  const ld = extractJsonLd(res.body);
+  const recipe = hasRecipe(ld);
+  const meta = stripText(res.body);
+  const score = (recipe ? 1_000_000 : 0) + ld.join('').length + meta.text.length;
+  return { strategy, url: u, ld, meta, recipe, score };
+}
+
+(async () => {
+  const attempts = [
+    ['direct browser-UA', url, { ua: BROWSER_UA }],
+    ['crawler Googlebot-UA + Google referrer', url, { ua: GOOGLEBOT_UA, referer: 'https://www.google.com/' }],
+    ...printVariants(url).map((v) => [`print/AMP variant (${v})`, v, { ua: GOOGLEBOT_UA }]),
+    ['reader r.jina.ai', `https://r.jina.ai/${url}`, { ua: BROWSER_UA }],
+    ['archive.ph newest', `https://archive.ph/newest/${url}`, { ua: BROWSER_UA }],
+  ];
+
+  let best = null;
+  for (const [strategy, u, opts] of attempts) {
+    const res = await get(u, opts);
+    const evald = evaluate(strategy, u, res);
+    if (evald && (!best || evald.score > best.score)) best = evald;
+    if (best && best.recipe) break; // a real Recipe JSON-LD is as good as it gets
+    if (!best && strategy.startsWith('direct') && res.status && res.status !== 200) {
+      process.stderr.write(`pinch-fetch: direct fetch HTTP ${res.status}; trying crawler/reader fallbacks…\n`);
+    }
+  }
+
+  if (!best) die(`could not retrieve ${url} by any strategy (paywall/block/offline) — tell the user the page could not be loaded`, 1);
+
+  process.stderr.write(`pinch-fetch: best result via "${best.strategy}"${best.recipe ? ' (schema.org/Recipe found)' : ''} [${best.url}]\n`);
+
+  if (best.ld.length) {
+    process.stdout.write(`===== JSON-LD (${best.ld.length} block(s); prefer schema.org/Recipe) =====\n`);
+    for (const b of best.ld) process.stdout.write(b + '\n');
     process.stdout.write('===== END JSON-LD =====\n\n');
   } else {
     process.stdout.write('===== JSON-LD: none found — read the text below =====\n\n');
   }
-
-  // 2) Tag-stripped text (title + meta description + body text), truncated.
-  const titleMatch = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const descMatch = body.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
-    || body.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i);
-  const text = body
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n\s*\n\s*\n+/g, '\n\n')
-    .trim();
-
   process.stdout.write('===== PAGE TEXT =====\n');
-  if (titleMatch) process.stdout.write(`TITLE: ${titleMatch[1].trim()}\n`);
-  if (descMatch) process.stdout.write(`DESCRIPTION: ${descMatch[1].trim()}\n`);
+  if (best.meta.title) process.stdout.write(`TITLE: ${best.meta.title}\n`);
+  if (best.meta.desc) process.stdout.write(`DESCRIPTION: ${best.meta.desc}\n`);
+  const text = best.meta.text || '';
   process.stdout.write('\n' + text.slice(0, MAX_TEXT) + (text.length > MAX_TEXT ? '\n…[truncated]…\n' : '\n'));
 })();

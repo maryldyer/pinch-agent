@@ -28,6 +28,20 @@ USER root
 COPY boot/pinch-entrypoint.sh /opt/plow/boot/pinch-entrypoint.sh
 RUN chmod 0755 /opt/plow/boot/pinch-entrypoint.sh
 
+# Video capture deps (pinch-video): ffmpeg/ffprobe for frame sampling, and yt-dlp
+# for metadata + download. ffmpeg via apt (no recommends, lists cleaned to keep
+# the layer lean); yt-dlp as the pure-python single-file release (the base
+# already ships python3, so this is a ~3 MB file rather than the ~35 MB
+# pyinstaller binary) and works on both amd64 and arm64.
+# NOTE: yt-dlp is intentionally tracked at `latest` — site extractors break
+# often, so recency is the point; bump/pin on a schedule in production.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+ && chmod 0755 /usr/local/bin/yt-dlp \
+ && /usr/local/bin/yt-dlp --version
+
 # Backend-client helpers the skills invoke via the shell tool (the base has no
 # web-fetch tool). Shared by both skills, so they live in one dir on PATH rather
 # than duplicated per skill. They read PINCH_BACKEND_URL + PINCH_API_TOKEN from

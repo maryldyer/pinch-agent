@@ -13,8 +13,16 @@ These are on your PATH (installed at `/opt/plow/pinch-bin`). They read
 `PINCH_BACKEND_URL` and `PINCH_API_TOKEN` from the environment — you never pass
 the token yourself.
 
-- `pinch-fetch <url>` — fetch a page the owner linked (you have no web-fetch
-  tool). Prints any JSON-LD blocks first, then the page text.
+- `pinch-fetch <url>` — fetch a recipe page the owner linked (you have no
+  web-fetch tool). Prints any JSON-LD blocks first, then the page text. It is
+  paywall-robust: it tries a browser fetch, then a Googlebot crawler fetch, then
+  print/AMP variants, then a reader/cache, and returns the fullest result — so a
+  soft-paywalled page usually still yields the full `schema.org/Recipe`.
+- `pinch-video <url>` — for a social VIDEO post (TikTok / Reel / Short / YouTube).
+  Pulls the caption, full description, and pinned/top comments (recipes often
+  live there), downloads the video, and samples ~10–15 frames to JPEG files.
+  Prints the text plus a `FRAMES (N):` list of image paths and a
+  `STATUS: downloaded | download blocked` line. No audio transcription.
 - `pinch-search "<query>"` — search the library (for the dedup check). Prints
   `id<TAB>title<TAB>sourceUrl` per match.
 - `pinch-get <id>` — read one full recipe as JSON (used when updating).
@@ -31,9 +39,20 @@ the token yourself.
      JSON-LD `schema.org/Recipe` block (name, recipeIngredient, recipeInstructions,
      prepTime, cookTime, totalTime, recipeYield, image). If there's no JSON-LD,
      read the page text and extract.
-   - **Social post**: `pinch-fetch` the post URL; extract from caption / visible
-     text. If it's only a video with no written recipe, extract what you can and
-     tell the owner that's all that was there.
+   - **Social VIDEO post** (TikTok / Reel / Short / YouTube): run
+     `pinch-video <url>`. Then **read the sampled frame images** it lists
+     (`FRAMES (N):`) with your own vision — on-screen ingredient and step
+     overlays — **and** the text it pulled (caption, description, pinned/top
+     comments). Synthesize one recipe from both: the frames usually carry the
+     quantities/steps, the text carries the title and any written recipe. Flag
+     only genuine gaps — if the quantities truly never appear on-screen or in the
+     text, ask the owner for just those, don't invent them.
+     - If `STATUS: download blocked`, you still got the text — work from it, say
+       plainly that the video itself couldn't be read, and ask the owner to paste
+       the steps or send a screenshot for anything missing. Never pretend you saw
+       frames you didn't.
+   - **Other social / article post** (no video): `pinch-fetch` the URL and
+     extract from the JSON-LD / caption / text.
    - **Pasted text**: normalize the text into the recipe shape yourself.
    - **Photo** (MMS attachment): read the image directly with your own vision —
      transcribe the title, ingredients, and steps. (Do not call `pinch-fetch`
