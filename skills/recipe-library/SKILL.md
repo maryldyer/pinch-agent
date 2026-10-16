@@ -9,8 +9,9 @@ skill never writes.
 
 ## Backend helpers (call via your shell tool)
 
-On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
-`PINCH_API_TOKEN` from the environment.
+On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` from the
+environment and authenticate with your account's cached write token (the legacy
+`PINCH_API_TOKEN` is only the fallback) — you never pass a token yourself.
 
 - `pinch-search "<query>"` — matches title / ingredient / category (case-
   insensitive substring; blank query returns everything). Prints

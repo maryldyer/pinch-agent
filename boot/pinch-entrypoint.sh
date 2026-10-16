@@ -42,4 +42,29 @@ apply_model_override() {
 
 apply_model_override &
 
+# Self-register this agent's account on first boot (spec §5 / Chunk 5).
+# REGISTER ONCE, THEN CACHE: a normal reboot finds the cached { full, readonly }
+# token pair on the state volume and skips registration entirely (no assertion
+# minted, no /register call). Only a first-ever boot (or a wiped volume) mints a
+# Plow Index Identity assertion and calls the backend.
+#
+# Best-effort and bounded: the backend /register endpoint may not be live yet
+# (Chunks 5/8 deferred), so this NEVER blocks or fails the agent — the backend
+# helpers fall back to PINCH_API_TOKEN until the token pair is cached. A truthful
+# non-zero exit from pinch-register just drives a few bounded retries here (for a
+# transient backend hiccup on a genuine first boot); a cache hit returns 0
+# immediately on the first attempt.
+self_register() {
+  for _ in 1 2 3; do
+    if node /opt/plow/pinch-bin/pinch-register >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "[pinch] WARN: self-registration did not complete; using PINCH_API_TOKEN fallback" >&2
+  return 0
+}
+
+self_register &
+
 exec node /opt/plow/boot/main.js

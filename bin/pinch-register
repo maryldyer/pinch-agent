@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+// pinch-register — self-register this agent's account on first boot, then cache.
+//
+// Usage:
+//   pinch-register            # register ONCE: skip if a token pair is cached
+//   pinch-register --rotate   # force re-register (rotate the full token)
+//
+// On a normal reboot a cached token pair on the volume short-circuits this to a
+// no-op (no assertion minted, no /register call). Only a first-ever boot (or a
+// wiped volume), or --rotate, mints a Plow Index Identity assertion and calls
+// the backend `POST /api/pinch/register`, persisting the issued { full, readonly }
+// pair to the volume at mode 0600.
+//
+// Exit 0 on success OR cache hit; non-zero on failure. The boot wrapper treats a
+// non-zero exit as NON-FATAL (the skills fall back to PINCH_API_TOKEN until the
+// pair is cached) — see boot/pinch-entrypoint.sh. Never prints any token.
+'use strict';
+const { ensureRegistered } = require('./lib/onboarding');
+
+const rotate = process.argv.includes('--rotate');
+const log = (m) => process.stderr.write(`pinch-register: ${m}\n`);
+
+(async () => {
+  try {
+    const r = await ensureRegistered({ rotate, logger: log });
+    if (!r.registered) log('done — cache hit, registration skipped');
+    else log(r.rotated ? 'done — rotated and re-cached the token pair' : 'done — registered and cached the token pair');
+    process.exit(0);
+  } catch (e) {
+    // Best-effort by design; truthful non-zero exit so the boot wrapper can
+    // retry, but it will not block the agent from starting.
+    log(`WARN: ${e.message}`);
+    process.exit(1);
+  }
+})();

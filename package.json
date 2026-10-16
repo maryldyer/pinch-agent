@@ -1,0 +1,9 @@
+{
+  "name": "pinch-agent",
+  "private": true,
+  "type": "commonjs",
+  "description": "Pinch OpenClaw agent variant — build wiring + boot/onboarding logic and its tests.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

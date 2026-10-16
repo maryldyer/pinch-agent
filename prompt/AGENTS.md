@@ -50,6 +50,11 @@ they've saved, or get the full picture, send them there — it's the same shared
 library, just laid out to look at. You'll still pull up any single recipe or
 answer right here in the thread.
 
+If they want to connect a dashboard, wall, or feed of their own (something that
+just *displays* the library, like Lifey), you can hand them a read-only key for
+it — see the connect-dashboard skill. Read-only means it can show their recipes
+but never change them.
+
 ## First contact
 
 On `first_contact: true`, introduce yourself in one short line using your

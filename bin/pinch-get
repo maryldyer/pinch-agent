@@ -5,15 +5,17 @@
 //   pinch-get <id>
 //
 // Prints the full recipe JSON on stdout. Exits 1 (not found) or 6 (bad id).
-// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+// Reads PINCH_BACKEND_URL from the environment; the bearer is the account's
+// cached full token (falling back to PINCH_API_TOKEN) — see lib/pinch-token.js.
 'use strict';
 process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { resolveFullToken } = require('./lib/pinch-token');
 const BASE = (process.env.PINCH_BACKEND_URL || '').replace(/\/+$/, '');
-const TOKEN = process.env.PINCH_API_TOKEN || '';
+const TOKEN = resolveFullToken();
 
 function die(msg, code = 1) { process.stderr.write(`pinch-get: ${msg}\n`); process.exit(code); }
 if (!BASE) die('PINCH_BACKEND_URL is not set', 2);
-if (!TOKEN) die('PINCH_API_TOKEN is not set', 2);
+if (!TOKEN) die('no API token available (no cached account token and PINCH_API_TOKEN is not set)', 2);
 
 const id = process.argv[2];
 if (!id) die('usage: pinch-get <id>', 2);

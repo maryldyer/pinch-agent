@@ -11,10 +11,13 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ddbaa6bc0f9e071d9411777b9159
 # --- Pinch backend wiring -------------------------------------------------
 # Non-secret base URL of the live recipe backend the capture/library skills call.
 ENV PINCH_BACKEND_URL=https://pinch.usesundays.com
-# The bearer token (= backend PINCH_RECIPE_TOKEN) is a SECRET supplied at run
-# time as `PINCH_API_TOKEN` via env/secret (plow-agents env / compose env_file)
-# and read from the runtime environment by the skills. It is deliberately NOT
-# declared as an ENV here, so no secret-named value is ever baked into a layer.
+# The bootstrap/fallback bearer (= backend PINCH_RECIPE_TOKEN) is a SECRET
+# supplied at run time as `PINCH_API_TOKEN` via env/secret (plow-agents env /
+# compose env_file). It is deliberately NOT declared as an ENV here, so no
+# secret-named value is ever baked into a layer. On first boot the agent
+# self-registers its own account (see boot/pinch-entrypoint.sh + bin/pinch-register)
+# and caches a per-account token pair on the state volume; the helpers prefer that
+# cached token, using PINCH_API_TOKEN only until the pair is cached.
 
 # The base ships text-only `z-ai/glm-5.2` as the primary model; a texted photo
 # reaches the agent but the primary can't read it, so photo capture would

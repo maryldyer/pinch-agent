@@ -10,8 +10,9 @@ backend so it shows up in both this chat and their Pinch app (shared library).
 ## Backend helpers (call via your shell tool)
 
 These are on your PATH (installed at `/opt/plow/pinch-bin`). They read
-`PINCH_BACKEND_URL` and `PINCH_API_TOKEN` from the environment — you never pass
-the token yourself.
+`PINCH_BACKEND_URL` from the environment and authenticate with your account's
+cached write token (the legacy `PINCH_API_TOKEN` is only the fallback) — you
+never pass the token yourself.
 
 - `pinch-fetch <url>` — fetch a recipe page the owner linked (you have no
   web-fetch tool). Prints any JSON-LD blocks first, then the page text. It is
