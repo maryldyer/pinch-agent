@@ -1,31 +1,38 @@
 ---
 name: recipe-library
-description: Search and read the owner's saved recipe library over text — find recipes by keyword, recall a specific recipe's ingredients or steps, or report what was saved recently — and format a short, readable reply.
+description: Search and read the owner's saved recipes over text — find recipes by keyword, recall a specific recipe's ingredients or steps, or report what was saved recently. Use when the owner asks about recipes they already have (not when they're sending a new one to save).
 ---
 # Recipe library
 
-**Status: stub — full implementation lands in Chunk 8. This file declares intent
-only; it does not yet implement the logic.**
+Answer questions about recipes the owner has already saved. Read-only — this
+skill never writes.
 
-## Intent
+## Backend helpers (call via your shell tool)
 
-Answer the owner's questions about recipes they've already saved: "find my
-chicken recipes", "how do I make the carbonara", "what did I save last", "how
-much garlic in the chili".
+On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
+`PINCH_API_TOKEN` from the environment.
 
-## Behavior (to implement in Chunk 8)
+- `pinch-search "<query>"` — matches title / ingredient / category (case-
+  insensitive substring; blank query returns everything). Prints
+  `id<TAB>title<TAB>sourceUrl` per match, and a count on stderr.
+- `pinch-get <id>` — prints one full recipe as JSON.
 
-- Search: `GET {PINCH_BACKEND_URL}/api/pinch/recipes?q=…` with
-  `Authorization: Bearer {PINCH_API_TOKEN}`.
-- Read one: `GET {PINCH_BACKEND_URL}/api/pinch/recipes/:id`.
-- Format a short, readable text reply — title plus the part they asked for
-  (ingredients, a step, times). Use a list only for actual lists (ingredients,
-  steps). Don't dump the whole recipe when they asked one thing.
-- On no matches, say so plainly and offer to broaden the search; on several
-  matches, show a short titled list and ask which one.
+## Steps
 
-## Config
+- **Find** ("find my chicken recipes", "what did I save last"): run
+  `pinch-search "<keywords>"`. Reply with a short titled list. If there are many,
+  show the closest handful and offer to narrow. If none, say so plainly and
+  offer to broaden or check the spelling.
+- **Recall one** ("how do I make the carbonara", "how much garlic in the
+  chili"): `pinch-search` to find the recipe, then `pinch-get <id>` for the full
+  detail, and answer the specific thing asked.
+  - If the search returns several candidates, ask which one (short list) rather
+    than guessing.
 
-- `PINCH_BACKEND_URL` — backend base URL (env, baked default
-  `https://pinch.maryandjake.us`).
-- `PINCH_API_TOKEN` — bearer token (env/secret, injected at deploy; never baked).
+## Replying (SMS-appropriate)
+
+- Keep it short. Answer the specific question — if they asked for one
+  ingredient's amount, give that line, not the whole recipe.
+- Use a list only for actual lists (ingredients, steps). For a full recipe,
+  title + ingredients + numbered steps is enough; skip empty fields.
+- Don't paste raw JSON or ids at the owner. Don't dump the whole library.

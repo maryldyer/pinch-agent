@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+// pinch-get — read one recipe by id (GET /api/pinch/recipes/:id).
+//
+// Usage:
+//   pinch-get <id>
+//
+// Prints the full recipe JSON on stdout. Exits 1 (not found) or 6 (bad id).
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const BASE = (process.env.PINCH_BACKEND_URL || '').replace(/\/+$/, '');
+const TOKEN = process.env.PINCH_API_TOKEN || '';
+
+function die(msg, code = 1) { process.stderr.write(`pinch-get: ${msg}\n`); process.exit(code); }
+if (!BASE) die('PINCH_BACKEND_URL is not set', 2);
+if (!TOKEN) die('PINCH_API_TOKEN is not set', 2);
+
+const id = process.argv[2];
+if (!id) die('usage: pinch-get <id>', 2);
+if (!/^[A-Za-z0-9_-]+$/.test(id)) die(`invalid recipe id "${id}" (expected [A-Za-z0-9_-]+)`, 6);
+
+(async () => {
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/pinch/recipes/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+  } catch (e) {
+    die(`backend unreachable: ${e.message}`, 4);
+  }
+  const text = await res.text();
+  if (res.status === 404) die(`no recipe with id ${id}`, 1);
+  if (!res.ok) die(`backend returned ${res.status}: ${text}`, res.status === 401 ? 5 : 1);
+  process.stdout.write(text.trim() + '\n');
+})();

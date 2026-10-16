@@ -28,6 +28,20 @@ USER root
 COPY boot/pinch-entrypoint.sh /opt/plow/boot/pinch-entrypoint.sh
 RUN chmod 0755 /opt/plow/boot/pinch-entrypoint.sh
 
+# Backend-client helpers the skills invoke via the shell tool (the base has no
+# web-fetch tool). Shared by both skills, so they live in one dir on PATH rather
+# than duplicated per skill. They read PINCH_BACKEND_URL + PINCH_API_TOKEN from
+# the env (Node, no extra deps).
+COPY bin/ /opt/plow/pinch-bin/
+RUN chmod 0755 /opt/plow/pinch-bin/*
+# ENV covers non-login shells (the usual `sh -c` tool exec); the profile.d entry
+# + .bashrc sourcing cover login and interactive shells (which reset PATH from
+# /etc/profile), mirroring how the base exposes `openclaw`. The skills also name
+# the absolute dir as a fallback.
+ENV PATH="/opt/plow/pinch-bin:${PATH}"
+RUN printf 'export PATH="/opt/plow/pinch-bin:$PATH"\n' > /etc/profile.d/pinch-path.sh \
+ && printf '\n. /etc/profile.d/pinch-path.sh\n' >> /home/node/.bashrc
+
 # Variant customization surface: persona + skills baked into the locations the
 # base boot reads (prompt rendered into the workspace AGENTS.md; skills loaded
 # from /opt/plow/skills via config `skills.load.extraDirs`).

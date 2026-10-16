@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+// pinch-search — search the recipe library (GET /api/pinch/recipes?q=...).
+//
+// Usage:
+//   pinch-search "<query>"     # title / ingredient / category substring match
+//   pinch-search               # blank query returns the whole library
+//
+// Prints one compact line per match: "<id>\t<title>\t<sourceUrl|->", with a
+// count on stderr. Use the printed id with pinch-get to read a full recipe.
+// Pass --json for the raw slim JSON array instead.
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const BASE = (process.env.PINCH_BACKEND_URL || '').replace(/\/+$/, '');
+const TOKEN = process.env.PINCH_API_TOKEN || '';
+
+function die(msg, code = 1) { process.stderr.write(`pinch-search: ${msg}\n`); process.exit(code); }
+if (!BASE) die('PINCH_BACKEND_URL is not set', 2);
+if (!TOKEN) die('PINCH_API_TOKEN is not set', 2);
+
+const args = process.argv.slice(2);
+const asJson = args.includes('--json');
+const query = args.filter((a) => a !== '--json').join(' ');
+
+(async () => {
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/pinch/recipes?q=${encodeURIComponent(query)}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+  } catch (e) {
+    die(`backend unreachable: ${e.message}`, 4);
+  }
+  const text = await res.text();
+  if (!res.ok) die(`backend returned ${res.status}: ${text}`, res.status === 401 ? 5 : 1);
+
+  let recipes;
+  try { recipes = JSON.parse(text).recipes; } catch { die('unexpected response from backend', 1); }
+  if (!Array.isArray(recipes)) die('unexpected response shape from backend', 1);
+
+  process.stderr.write(`${recipes.length} match${recipes.length === 1 ? '' : 'es'}${query ? ` for "${query}"` : ''}\n`);
+  if (asJson) {
+    const slim = recipes.map((r) => ({ id: r.id, title: r.title, sourceUrl: r.sourceUrl ?? null, categories: r.categories ?? [] }));
+    process.stdout.write(JSON.stringify(slim, null, 2) + '\n');
+    return;
+  }
+  for (const r of recipes) {
+    process.stdout.write(`${r.id}\t${r.title}\t${r.sourceUrl || '-'}\n`);
+  }
+})();
