@@ -1,4 +1,6 @@
 # Plow line credentials minted locally (contains PLOW_AGENT_TOKEN) — never commit.
 plow-credentials
+# Any env file carrying secrets (incl. pinch-secrets.env, PINCH_API_TOKEN) — never commit.
+*.env
 .env
 .env.*

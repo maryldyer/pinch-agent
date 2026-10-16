@@ -1,0 +1,26 @@
+# Local run for the Pinch OpenClaw agent variant (`plow-agents deploy --local`,
+# or `docker compose up --build` after `plow-agents mint <line>`).
+#
+# This is tailored to the OpenClaw base (NOT the plow-agents Hermes example):
+# the agent's state dir is /var/lib/plow, so the named volume mounts there. That
+# persists the agent's sessions AND the openclaw.json our entrypoint patches with
+# the image-capable primary model across up/down.
+services:
+  agent:
+    build: .
+    env_file:
+      # Minted by `plow-agents mint`/`deploy --local`: PLOW_API_BASE + PLOW_AGENT_TOKEN.
+      - path: ./plow-credentials
+        required: false
+      # Pinch secret: PINCH_API_TOKEN (gitignored). PINCH_BACKEND_URL is baked in the image.
+      - path: ./pinch-secrets.env
+        required: false
+    volumes:
+      # OpenClaw state dir (openclaw.json, workspace, boot log, agent sessions).
+      - state:/var/lib/plow
+    # The agent checkpoints on SIGTERM; its supervisor needs ~30s, so override
+    # Docker's default 10s to avoid orphaning the transcript lease.
+    stop_grace_period: 35s
+    # No ports: the agent connects to Plow outbound.
+volumes:
+  state:
