@@ -10,7 +10,7 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ddbaa6bc0f9e071d9411777b9159
 
 # --- Pinch backend wiring -------------------------------------------------
 # Non-secret base URL of the live recipe backend the capture/library skills call.
-ENV PINCH_BACKEND_URL=https://pinch.maryandjake.us
+ENV PINCH_BACKEND_URL=https://pinch.usesundays.com
 # The bearer token (= backend PINCH_RECIPE_TOKEN) is a SECRET supplied at run
 # time as `PINCH_API_TOKEN` via env/secret (plow-agents env / compose env_file)
 # and read from the runtime environment by the skills. It is deliberately NOT

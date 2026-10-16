@@ -3,7 +3,7 @@
 Pinch is a texting home-cooking assistant: it captures recipes the owner sends
 (URL, pasted text, photo, or social post) and recalls them on request. It is an
 OpenClaw agent **variant** built on the pinned Plow OpenClaw base image, talking
-to the live Pinch backend at <https://pinch.maryandjake.us> (shared recipe
+to the live Pinch backend at <https://pinch.usesundays.com> (shared recipe
 library with the Pinch web app).
 
 This repo is the Chunk 6 scaffold: persona + skill stubs + build wiring. The
@@ -33,7 +33,7 @@ public ECR registry and pulls anonymously — no registry auth to build.
 
 | Var | Purpose | Where set |
 | --- | --- | --- |
-| `PINCH_BACKEND_URL` | Backend base URL the skills call | Baked (`https://pinch.maryandjake.us`); override via env if needed |
+| `PINCH_BACKEND_URL` | Backend base URL the skills call | Baked (`https://pinch.usesundays.com`); override via env if needed |
 | `PINCH_API_TOKEN` | Bearer token = backend `PINCH_RECIPE_TOKEN` | **Secret — injected at deploy, never baked** |
 | `PLOW_API_BASE` / `PLOW_AGENT_TOKEN` | Plow line credentials | Injected by the Plow host / local `plow-credentials` |
 
