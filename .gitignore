@@ -1,0 +1,4 @@
+# Plow line credentials minted locally (contains PLOW_AGENT_TOKEN) — never commit.
+plow-credentials
+.env
+.env.*

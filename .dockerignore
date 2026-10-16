@@ -1,0 +1,5 @@
+.git
+.gitignore
+README.md
+*.md.bak
+plow-credentials
