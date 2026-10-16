@@ -77,7 +77,8 @@ the token yourself.
      Upsert replaces the whole recipe, so include the fields you want to keep.
 
 4. **Save.** Write the JSON and run `pinch-save`. On success, confirm in one
-   short line: `Saved — <title>` (optionally the ingredient count or source).
+   short line led by a chef + check: `🧑‍🍳✅ <title>, <N> ingredients` (count or
+   source optional).
 
 ## Errors (never drop the owner's input)
 
