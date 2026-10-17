@@ -4,10 +4,13 @@
 // (origin='manual'); an optional --aisle overrides the aisle guess.
 //
 // Usage:
-//   pinch-add-item <listId> "<text>"            # e.g. "2 lemons", "paper towels"
-//   pinch-add-item <listId> "<text>" --aisle "Produce"
+//   pinch-add-item "<text>"                       # defaults to the "This Week" (default) list
+//   pinch-add-item "<text>" --list <listId>       # a specific list
+//   pinch-add-item "<text>" --aisle "Produce"
 //
-// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+// The list defaults to the `default` ("This Week") sentinel — the owner's "my
+// list" — so "add paper towels" just works (the backend auto-materializes the
+// default list on add). Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
 'use strict';
 process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
 const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
@@ -15,19 +18,19 @@ const die = dieFor('pinch-add-item');
 requireEnv(die);
 
 const args = process.argv.slice(2);
-const listId = args[0];
-if (!listId || listId.startsWith('--')) die('usage: pinch-add-item <listId> "<text>" [--aisle "<aisle>"]', 2);
-// Everything after the listId is the item text, minus an optional `--aisle <v>`.
-const rest = args.slice(1);
-const aisleIdx = rest.indexOf('--aisle');
-const aisle = aisleIdx !== -1 ? rest[aisleIdx + 1] : null;
+const listIdx = args.indexOf('--list');
+const listId = listIdx !== -1 ? args[listIdx + 1] : 'default';
+if (!listId) die('--list needs a value', 2);
+const aisleIdx = args.indexOf('--aisle');
+const aisle = aisleIdx !== -1 ? args[aisleIdx + 1] : null;
+// Positionals (skipping `--list <v>` / `--aisle <v>`) form the item text.
 const textTokens = [];
-for (let i = 0; i < rest.length; i++) {
-  if (rest[i] === '--aisle') { i++; continue; } // skip the flag and its value
-  textTokens.push(rest[i]);
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--list' || args[i] === '--aisle') { i++; continue; } // skip the flag + its value
+  textTokens.push(args[i]);
 }
 const text = textTokens.join(' ').trim();
-if (!text) die('no item text — usage: pinch-add-item <listId> "<text>"', 2);
+if (!text) die('no item text — usage: pinch-add-item "<text>" [--list <listId>] [--aisle "<aisle>"]', 2);
 
 (async () => {
   const body = aisle ? { text, aisle } : { text };

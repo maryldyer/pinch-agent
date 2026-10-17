@@ -30,7 +30,8 @@ On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
   "ingredientLines":["…"]}' | pinch-add-recipe <listId>`. The server consolidates
   into the list (origin `recipe`); adding the same recipe twice sums, never
   duplicates.
-- `pinch-add-item <listId> "<text>" [--aisle "<aisle>"]` — one hand-added item.
+- `pinch-add-item "<text>" [--list <listId>] [--aisle "<aisle>"]` — one hand-added
+  item. The list defaults to `default` ("This Week" — "my list").
 - `pinch-check <listId> <itemId> [--uncheck]` — tick an item off while shopping.
 - `pinch-clear-checked [<listId>]` — remove everything already ticked off.
 - `pinch-clear-list [<listId>]` — empty a list (keeps the list itself).

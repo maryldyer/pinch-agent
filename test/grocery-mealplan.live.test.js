@@ -88,10 +88,16 @@ test('helpers drive the grocery + meal-plan endpoints against a live backend', {
   assert.strictEqual(onion.quantity, 2, 'onion consolidated to 2 across both recipes');
   assert.strictEqual(onion.sources.length, 2, 'onion keeps a source per recipe');
 
-  // manual add is a manual-origin source.
-  helper('pinch-add-item', [listId, '2 lemons']);
+  // manual add is a manual-origin source (explicit --list).
+  helper('pinch-add-item', ['2 lemons', '--list', listId]);
   const lemon = JSON.parse(helper('pinch-list-items', [listId, '--json'])).find((i) => i.normalizedName === 'lemon');
   assert.strictEqual(lemon.sources[0].origin, 'manual');
+
+  // M3: no --list defaults to the "This Week" (default) list; the backend
+  // auto-materializes default on add, so this lands even on a fresh account.
+  helper('pinch-add-item', ['1 loaf sourdough']);
+  const onDefault = JSON.parse(helper('pinch-list-items', ['default', '--json']));
+  assert.ok(onDefault.some((i) => i.text.includes('sourdough')), 'default-list fallback landed the item on "This Week"');
 
   // meal plan: set an entry, read it back, generate.
   helper('pinch-plan-set', ['2030-01-02', 'dinner', 'live-shakshuka', '--week', '2029-12-31']);
@@ -126,4 +132,39 @@ test('single-engine gate: web path and agent-helper path yield IDENTICAL consoli
   // The consolidation (totals + sources) must be byte-for-byte identical — the
   // only differences allowed are row ids / order, which canonical() strips.
   assert.deepStrictEqual(canonical(agentItems), canonical(webItems));
+});
+
+test('single-engine gate (stdin path): a piped staple-trimmed recipe consolidates EXACTLY the kept lines', { skip: SKIP }, async () => {
+  // The agent drops staples by LLM judgment and PIPES the trimmed recipe JSON to
+  // pinch-add-recipe (no --id). This gate catches any future regression that
+  // sneaks local filtering/aggregation into the stdin path: the server must
+  // consolidate exactly the lines it was sent — identical to posting them via the
+  // web from-recipe API — with the staples the agent dropped simply absent.
+  const recipe = {
+    id: 'stdin-shak',
+    title: 'Shakshuka',
+    ingredientLines: ['6 eggs', '1 onion', '2 cups crushed tomatoes', '1 tsp salt', '1 tsp pepper'],
+  };
+  await web('POST', '/api/pinch/recipes', fullRecipe(recipe));
+  const kept = ['6 eggs', '1 onion', '2 cups crushed tomatoes']; // agent dropped salt + pepper
+
+  // AGENT stdin path: pipe the trimmed recipe JSON on stdin.
+  const agentList = JSON.parse(helper('pinch-lists', ['--create', 'stdin-agent'])).id;
+  helper('pinch-add-recipe', [agentList], JSON.stringify({ id: recipe.id, title: recipe.title, ingredientLines: kept }));
+  const agentItems = JSON.parse(helper('pinch-list-items', [agentList, '--json']));
+
+  // WEB path: post the SAME kept lines directly.
+  const webList = (await web('POST', '/api/pinch/lists', { name: 'stdin-web' })).list.id;
+  await web('POST', `/api/pinch/lists/${webList}/items/from-recipe`, {
+    recipeId: recipe.id, recipeTitle: recipe.title, ingredientLines: kept,
+  });
+  const webItems = (await web('GET', `/api/pinch/lists/${webList}/items`)).items;
+
+  // Identical to the web path → the stdin path ran the SAME server engine.
+  assert.deepStrictEqual(canonical(agentItems), canonical(webItems));
+  // Exactly the 3 kept lines (no local aggregation added/merged anything extra)…
+  assert.strictEqual(agentItems.length, 3);
+  // …the dropped staples are absent, and every source is origin='recipe'.
+  assert.ok(!agentItems.some((i) => /salt|pepper/.test(i.normalizedName)), 'dropped staples absent');
+  assert.ok(agentItems.every((i) => i.sources.every((s) => s.origin === 'recipe')), 'all sources origin=recipe');
 });
