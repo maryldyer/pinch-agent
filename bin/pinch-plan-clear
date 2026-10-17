@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+// pinch-plan-clear — clear a (date, slot) in the week's plan, returning it to
+// empty (DELETE /api/pinch/plan/entries/:date/:slot).
+//
+// Usage:
+//   pinch-plan-clear <date> <slot>                 # date = YYYY-MM-DD, slot = breakfast|lunch|dinner
+//   pinch-plan-clear <date> <slot> --week 2026-10-12
+//
+// A slot that was already empty (or a never-created week) reports "nothing
+// planned there" and exits 1. Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api } = require('./lib/pinch-http');
+const die = dieFor('pinch-plan-clear');
+requireEnv(die);
+
+const SLOTS = ['breakfast', 'lunch', 'dinner'];
+const args = process.argv.slice(2);
+const weekIdx = args.indexOf('--week');
+const week = weekIdx !== -1 ? args[weekIdx + 1] : null;
+const positional = args.filter((a, i) => a !== '--week' && !(weekIdx !== -1 && i === weekIdx + 1));
+const [date, slot] = positional;
+
+if (!date || !slot) die('usage: pinch-plan-clear <date> <slot> [--week YYYY-MM-DD]', 2);
+if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) die('invalid date (expected YYYY-MM-DD)', 2);
+if (!SLOTS.includes(slot)) die(`invalid slot "${slot}" (expected ${SLOTS.join(' | ')})`, 2);
+if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) die('invalid --week (expected YYYY-MM-DD)', 2);
+
+(async () => {
+  const q = week ? `?week=${encodeURIComponent(week)}` : '';
+  const { res } = await api(die, 'DELETE', `/api/pinch/plan/entries/${date}/${slot}${q}`, { allow404: true });
+  if (res.status === 404) die(`nothing planned for ${slot} on ${date}`, 1);
+  process.stderr.write(`Cleared ${slot} on ${date}\n`);
+})();

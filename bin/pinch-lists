@@ -1,0 +1,61 @@
+#!/usr/bin/env node
+// pinch-lists — grocery list CRUD (/api/pinch/lists).
+//
+// Usage:
+//   pinch-lists                      # list all: id<TAB>name  (count on stderr)
+//   pinch-lists --json               # raw JSON array
+//   pinch-lists --create "<name>"    # create a list, print its JSON
+//   pinch-lists --rename <id> "<name>"
+//   pinch-lists --delete <id>        # (the default "This Week" list can't be deleted)
+//
+// The default list every account has is id "default" ("This Week"); most agent
+// flows add to it without creating anything. Reads PINCH_BACKEND_URL and
+// PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-lists');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+
+(async () => {
+  if (args[0] === '--create') {
+    const name = args.slice(1).filter((a) => a !== '--json').join(' ').trim();
+    if (!name) die('usage: pinch-lists --create "<name>"', 2);
+    const { text } = await api(die, 'POST', '/api/pinch/lists', { body: { name } });
+    const { list } = parse(die, text);
+    process.stderr.write(`Created list "${list.name}" (id ${list.id})\n`);
+    process.stdout.write(JSON.stringify(list, null, 2) + '\n');
+    return;
+  }
+  if (args[0] === '--rename') {
+    const id = args[1];
+    const name = args.slice(2).join(' ').trim();
+    if (!id || !name) die('usage: pinch-lists --rename <id> "<name>"', 2);
+    const { text } = await api(die, 'PATCH', `/api/pinch/lists/${encodeURIComponent(id)}`, { body: { name } });
+    const { list } = parse(die, text);
+    process.stderr.write(`Renamed to "${list.name}"\n`);
+    process.stdout.write(JSON.stringify(list, null, 2) + '\n');
+    return;
+  }
+  if (args[0] === '--delete') {
+    const id = args[1];
+    if (!id) die('usage: pinch-lists --delete <id>', 2);
+    await api(die, 'DELETE', `/api/pinch/lists/${encodeURIComponent(id)}`);
+    process.stderr.write(`Deleted list ${id}\n`);
+    return;
+  }
+
+  // Default: read all lists.
+  const asJson = args.includes('--json');
+  const { text } = await api(die, 'GET', '/api/pinch/lists');
+  const { lists } = parse(die, text);
+  if (!Array.isArray(lists)) die('unexpected response shape from backend', 1);
+  process.stderr.write(`${lists.length} list${lists.length === 1 ? '' : 's'}\n`);
+  if (asJson) {
+    process.stdout.write(JSON.stringify(lists, null, 2) + '\n');
+    return;
+  }
+  for (const l of lists) process.stdout.write(`${l.id}\t${l.name}\n`);
+})();

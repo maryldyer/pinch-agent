@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+// pinch-plan — read the week's meal plan (GET /api/pinch/plan).
+//
+// Usage:
+//   pinch-plan                     # this week's plan + entries
+//   pinch-plan --week 2026-10-12   # a specific week (its Monday)
+//   pinch-plan --json              # raw { plan, entries }
+//
+// Prints one line per filled slot: "<date> <slot>: <recipe title>". Titles are
+// resolved from the library (the entries carry only a recipeId); an id with no
+// matching recipe is shown as "(recipe <id>)". A never-touched week prints
+// nothing (and notes it on stderr). Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-plan');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+const asJson = args.includes('--json');
+const weekIdx = args.indexOf('--week');
+const week = weekIdx !== -1 ? args[weekIdx + 1] : null;
+if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) die('invalid --week (expected YYYY-MM-DD)', 2);
+
+(async () => {
+  const q = week ? `?week=${encodeURIComponent(week)}` : '';
+  const { text } = await api(die, 'GET', `/api/pinch/plan${q}`);
+  const data = parse(die, text);
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+
+  if (asJson) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+
+  const weekLabel = data.plan ? data.plan.weekStart : week || 'this week';
+  if (entries.length === 0) {
+    process.stderr.write(`Nothing planned for the week of ${weekLabel}\n`);
+    return;
+  }
+
+  // Resolve each distinct recipeId → title (best-effort; ≤21 entries/week).
+  const titles = new Map();
+  for (const id of new Set(entries.map((e) => e.recipeId))) {
+    const { res, text: rt } = await api(die, 'GET', `/api/pinch/recipes/${encodeURIComponent(id)}`, { allow404: true });
+    titles.set(id, res.status === 404 ? `(recipe ${id})` : (parse(die, rt).title || `(recipe ${id})`));
+  }
+  process.stderr.write(`Week of ${weekLabel} — ${entries.length} planned\n`);
+  for (const e of entries) {
+    process.stdout.write(`${e.date} ${e.slot}: ${titles.get(e.recipeId)}\n`);
+  }
+})();

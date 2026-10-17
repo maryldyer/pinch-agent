@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+// pinch-add-recipe — add a recipe's ingredients to a grocery list, consolidating
+// SERVER-SIDE (POST /api/pinch/lists/:id/items/from-recipe). The backend runs the
+// one shared consolidation engine (§6/§9) — this helper never aggregates locally.
+//
+// Usage:
+//   pinch-add-recipe <listId> --id <recipeId>     # pull a saved recipe by id
+//   pinch-get <id> | pinch-add-recipe <listId>    # pipe a recipe JSON (saved or fresh)
+//   echo '{"title":"...","ingredientLines":[...]}' | pinch-add-recipe <listId>
+//
+// Sends { recipeId, recipeTitle, ingredientLines }; the item sources are recorded
+// with origin='recipe' and the denormalized title. Adding the same recipe again
+// consolidates (sums + keeps the source), never duplicates. Prints the list's
+// resulting items. A fresh (unsaved) recipe with no id gets a generated one so
+// its contribution is still a distinct, titled source — but SAVING it first
+// (pinch-save) keeps the id stable/linkable.
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { randomUUID } = require('node:crypto');
+const { readFileSync } = require('node:fs');
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-add-recipe');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+const listId = args[0];
+if (!listId || listId.startsWith('--')) die('usage: pinch-add-recipe <listId> [--id <recipeId>]  (or pipe a recipe JSON on stdin)', 2);
+const idFlag = args.indexOf('--id');
+const byId = idFlag !== -1 ? args[idFlag + 1] : null;
+const splitLines = (s) => (typeof s === 'string' ? s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : []);
+
+(async () => {
+  let recipe;
+  if (byId) {
+    if (!/^[A-Za-z0-9_-]+$/.test(byId)) die(`invalid recipe id "${byId}"`, 2);
+    const { res, text } = await api(die, 'GET', `/api/pinch/recipes/${encodeURIComponent(byId)}`, { allow404: true });
+    if (res.status === 404) die(`no recipe with id ${byId} — save it first (pinch-save)`, 1);
+    recipe = parse(die, text);
+  } else {
+    let raw;
+    try { raw = readFileSync(0, 'utf8'); } catch (e) { die(`could not read recipe on stdin: ${e.message}`, 2); }
+    if (!raw.trim()) die('no recipe: pass --id <recipeId> or pipe a recipe JSON on stdin', 2);
+    recipe = parse(die, raw);
+  }
+
+  const recipeTitle = typeof recipe.title === 'string' && recipe.title.trim() ? recipe.title.trim() : null;
+  if (!recipeTitle) die('recipe has no title — a source needs a name; add a title (or save the recipe first)', 3);
+  const ingredientLines = Array.isArray(recipe.ingredientLines) && recipe.ingredientLines.length
+    ? recipe.ingredientLines
+    : splitLines(recipe.ingredients);
+  if (!ingredientLines.length) die(`"${recipeTitle}" has no ingredient lines to add`, 3);
+  const recipeId = typeof recipe.id === 'string' && /^[A-Za-z0-9_-]+$/.test(recipe.id) ? recipe.id : randomUUID();
+
+  const { res, text } = await api(
+    die,
+    'POST',
+    `/api/pinch/lists/${encodeURIComponent(listId)}/items/from-recipe`,
+    { body: { recipeId, recipeTitle, ingredientLines }, allow404: true },
+  );
+  if (res.status === 404) die(`no list with id "${listId}" (create it with pinch-lists --create)`, 1);
+  const { items } = parse(die, text);
+
+  process.stderr.write(`Added "${recipeTitle}" to ${listId} — ${items.length} item${items.length === 1 ? '' : 's'} now on the list\n`);
+  for (const it of items) process.stdout.write(`${it.checked ? '[x]' : '[ ]'} ${it.text}\n`);
+})();

@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+// pinch-add-item — add ONE manual (hand-added) item to a grocery list
+// (POST /api/pinch/lists/:id/items). The server parses + consolidates the line
+// (origin='manual'); an optional --aisle overrides the aisle guess.
+//
+// Usage:
+//   pinch-add-item <listId> "<text>"            # e.g. "2 lemons", "paper towels"
+//   pinch-add-item <listId> "<text>" --aisle "Produce"
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-add-item');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+const listId = args[0];
+if (!listId || listId.startsWith('--')) die('usage: pinch-add-item <listId> "<text>" [--aisle "<aisle>"]', 2);
+// Everything after the listId is the item text, minus an optional `--aisle <v>`.
+const rest = args.slice(1);
+const aisleIdx = rest.indexOf('--aisle');
+const aisle = aisleIdx !== -1 ? rest[aisleIdx + 1] : null;
+const textTokens = [];
+for (let i = 0; i < rest.length; i++) {
+  if (rest[i] === '--aisle') { i++; continue; } // skip the flag and its value
+  textTokens.push(rest[i]);
+}
+const text = textTokens.join(' ').trim();
+if (!text) die('no item text — usage: pinch-add-item <listId> "<text>"', 2);
+
+(async () => {
+  const body = aisle ? { text, aisle } : { text };
+  const { res, text: resText } = await api(
+    die,
+    'POST',
+    `/api/pinch/lists/${encodeURIComponent(listId)}/items`,
+    { body, allow404: true },
+  );
+  if (res.status === 404) die(`no list with id "${listId}" (create it with pinch-lists --create)`, 1);
+  const { items } = parse(die, resText);
+  process.stderr.write(`Added "${text}" to ${listId} — ${items.length} item${items.length === 1 ? '' : 's'} now on the list\n`);
+  for (const it of items) process.stdout.write(`${it.checked ? '[x]' : '[ ]'} ${it.text}\n`);
+})();

@@ -1,0 +1,9 @@
+{
+  "name": "pinch-agent",
+  "private": true,
+  "type": "commonjs",
+  "description": "Pinch OpenClaw agent variant — grocery + meal-plan text skills and their helpers.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

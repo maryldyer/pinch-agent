@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+// pinch-list-items — read a grocery list's consolidated items
+// (GET /api/pinch/lists/:id/items).
+//
+// Usage:
+//   pinch-list-items [<listId>]     # default listId is "default" (This Week)
+//   pinch-list-items <listId> --json
+//
+// Each line: "<checkbox> <text>  [· meals: Title, Title]". The `text` is the
+// server-rendered display label (name + consolidated total); source meal names
+// come from the item's sources (manual items have none). `--json` prints the
+// raw items (with ids + sources) for a follow-up check/clear.
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-list-items');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+const asJson = args.includes('--json');
+const listId = args.find((a) => a !== '--json') || 'default';
+
+(async () => {
+  const { res, text } = await api(die, 'GET', `/api/pinch/lists/${encodeURIComponent(listId)}/items`, { allow404: true });
+  if (res.status === 404) die(`no list with id "${listId}"`, 1);
+  const { items } = parse(die, text);
+  if (!Array.isArray(items)) die('unexpected response shape from backend', 1);
+
+  process.stderr.write(`${items.length} item${items.length === 1 ? '' : 's'} on ${listId}\n`);
+  if (asJson) {
+    process.stdout.write(JSON.stringify(items, null, 2) + '\n');
+    return;
+  }
+  for (const it of items) {
+    const box = it.checked ? '[x]' : '[ ]';
+    const meals = [...new Set(it.sources.map((s) => s.recipeTitle).filter(Boolean))];
+    const tail = meals.length ? `  · meals: ${meals.join(', ')}` : '';
+    process.stdout.write(`${box} ${it.text}${tail}\n`);
+  }
+})();
