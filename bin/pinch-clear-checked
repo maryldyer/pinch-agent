@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+// pinch-clear-checked — remove all checked-off items from a list
+// (POST /api/pinch/lists/:id/clear-checked).
+//
+// Usage:
+//   pinch-clear-checked [<listId>]    # default listId is "default" (This Week)
+//
+// Prints the items that remain. Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-clear-checked');
+requireEnv(die);
+
+const listId = process.argv[2] || 'default';
+
+(async () => {
+  const { res, text } = await api(die, 'POST', `/api/pinch/lists/${encodeURIComponent(listId)}/clear-checked`, { allow404: true });
+  if (res.status === 404) die(`no list with id "${listId}"`, 1);
+  const { items } = parse(die, text);
+  process.stderr.write(`Cleared checked items — ${items.length} left on ${listId}\n`);
+  for (const it of items) process.stdout.write(`${it.checked ? '[x]' : '[ ]'} ${it.text}\n`);
+})();

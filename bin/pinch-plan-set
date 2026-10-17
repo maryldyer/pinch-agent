@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+// pinch-plan-set — assign a recipe to a (date, slot) in the week's plan
+// (PUT /api/pinch/plan/entries). Upsert: re-assigning a filled slot replaces it.
+//
+// Usage:
+//   pinch-plan-set <date> <slot> <recipeId>              # date = YYYY-MM-DD, slot = breakfast|lunch|dinner
+//   pinch-plan-set <date> <slot> <recipeId> --week 2026-10-12
+//
+// The plan for the date's week is created on first assign. Get the recipeId from
+// pinch-search. Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-plan-set');
+requireEnv(die);
+
+const SLOTS = ['breakfast', 'lunch', 'dinner'];
+const args = process.argv.slice(2);
+const weekIdx = args.indexOf('--week');
+const week = weekIdx !== -1 ? args[weekIdx + 1] : null;
+const positional = args.filter((a, i) => a !== '--week' && !(weekIdx !== -1 && i === weekIdx + 1));
+const [date, slot, recipeId] = positional;
+
+if (!date || !slot || !recipeId) die('usage: pinch-plan-set <date> <slot> <recipeId> [--week YYYY-MM-DD]', 2);
+if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) die('invalid date (expected YYYY-MM-DD)', 2);
+if (!SLOTS.includes(slot)) die(`invalid slot "${slot}" (expected ${SLOTS.join(' | ')})`, 2);
+if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) die('invalid --week (expected YYYY-MM-DD)', 2);
+
+(async () => {
+  const body = { date, slot, recipeId };
+  if (week) body.week = week;
+  const { text } = await api(die, 'PUT', '/api/pinch/plan/entries', { body });
+  const data = parse(die, text);
+  process.stderr.write(`Planned ${slot} on ${date} (plan week ${data.plan ? data.plan.weekStart : '?'})\n`);
+  process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+})();

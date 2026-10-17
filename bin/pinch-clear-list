@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+// pinch-clear-list — delete ALL items from a list (DELETE /api/pinch/lists/:id/items).
+// The list itself stays; only its items are removed.
+//
+// Usage:
+//   pinch-clear-list [<listId>]    # default listId is "default" (This Week)
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+const { dieFor, requireEnv, api } = require('./lib/pinch-http');
+const die = dieFor('pinch-clear-list');
+requireEnv(die);
+
+const listId = process.argv[2] || 'default';
+
+(async () => {
+  const { res } = await api(die, 'DELETE', `/api/pinch/lists/${encodeURIComponent(listId)}/items`, { allow404: true });
+  if (res.status === 404) die(`no list with id "${listId}"`, 1);
+  process.stderr.write(`Emptied list ${listId}\n`);
+})();

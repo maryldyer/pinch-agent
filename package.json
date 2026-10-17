@@ -2,8 +2,8 @@
   "name": "pinch-agent",
   "private": true,
   "type": "commonjs",
-  "description": "Pinch OpenClaw agent variant — build wiring + boot/onboarding logic and its tests.",
+  "description": "Pinch OpenClaw agent variant — recipe capture/library, grocery + meal-plan skills, self-register onboarding, and magic-link login.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   }
 }

@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+// pinch-generate — generate a grocery list from a week's meal plan, the headline
+// loop (POST /api/pinch/plan/generate). The backend consolidates every assigned
+// recipe (a recipe in two slots counts twice) with the one shared engine and
+// writes the target list with SOURCE-LEVEL REPLACE: it refreshes the plan-sourced
+// items and PRESERVES hand-added + ad-hoc-recipe items already on the list.
+//
+// Usage:
+//   pinch-generate                         # this week → the default "This Week" list
+//   pinch-generate --week 2026-10-12       # a specific week
+//   pinch-generate --list <listId>         # a non-default target list (must exist)
+//
+// Prints the resulting list. Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-generate');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+const weekIdx = args.indexOf('--week');
+const week = weekIdx !== -1 ? args[weekIdx + 1] : null;
+const listIdx = args.indexOf('--list');
+const listId = listIdx !== -1 ? args[listIdx + 1] : null;
+if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) die('invalid --week (expected YYYY-MM-DD)', 2);
+
+(async () => {
+  const q = week ? `?week=${encodeURIComponent(week)}` : '';
+  const body = listId ? { listId } : undefined;
+  const { res, text } = await api(die, 'POST', `/api/pinch/plan/generate${q}`, { body, allow404: true });
+  if (res.status === 404) die(`no list with id "${listId}" (create it with pinch-lists --create)`, 1);
+  const { items } = parse(die, text);
+  const where = listId || 'default';
+  process.stderr.write(`Generated ${items.length} item${items.length === 1 ? '' : 's'} onto ${where}\n`);
+  for (const it of items) {
+    const meals = [...new Set(it.sources.map((s) => s.recipeTitle).filter(Boolean))];
+    const tail = meals.length ? `  · meals: ${meals.join(', ')}` : '';
+    process.stdout.write(`${it.checked ? '[x]' : '[ ]'} ${it.text}${tail}\n`);
+  }
+})();
