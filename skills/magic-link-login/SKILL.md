@@ -41,6 +41,6 @@ point. Don't paste any token yourself; the helper only returns the link.
   again for a fresh one — each call mints a new link.
 - This logs them into the web app (browsing their library). It's not the
   read-only dashboard key — that's the connect-dashboard skill, for pointing an
-  external display (like Lifey) at the library.
+  external display (like Hive) at the library.
 - Keep the link out of anything but the direct reply to the owner; don't repeat
   it back in later messages or summaries.

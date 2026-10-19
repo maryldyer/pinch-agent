@@ -1,10 +1,10 @@
 ---
 name: connect-dashboard
-description: Hand the owner their read-only dashboard token so a dashboard (e.g. Lifey) can pull their recipe library. Use when the owner texts an intent to connect, pair, link, or set up their dashboard / wall / feed — "connect dashboard", "pair my dashboard", "how do I link Lifey", "get me my read-only token".
+description: Hand the owner their read-only dashboard token so a dashboard (e.g. Hive) can pull their recipe library. Use when the owner texts an intent to connect, pair, link, or set up their dashboard / wall / feed — "connect dashboard", "pair my dashboard", "how do I link Hive", "get me my read-only token".
 ---
 # Connect dashboard
 
-The owner wants to point a dashboard (Lifey, the kitchen wall, any read-only
+The owner wants to point a dashboard (Hive, the kitchen wall, any read-only
 viewer) at their recipe library. Hand them their account's **read-only** token
 and the wall-sync URL. Read-only means the dashboard can pull and display, never
 write — so it's safe to share with a display.
