@@ -67,4 +67,22 @@ self_register() {
 
 self_register &
 
+# Seed Pinch's long-term memory into the workspace. MEMORY.md is the base's
+# long-term-memory file — it auto-loads in DM/iMessage sessions and is searchable
+# via the memory tools — but the base boot renders AGENTS.md and never manages
+# MEMORY.md. So we bake MEMORY.md into the image and place it in the workspace
+# here, BEFORE launching boot (main.js only ever rm's BOOTSTRAP/SOUL/IDENTITY/
+# USER.md and rewrites AGENTS.md, never MEMORY.md). Seeded only if absent, so a
+# volume whose memory has grown at runtime is never clobbered; a fresh-volume
+# relaunch re-seeds from the baked copy, keeping the facts durable + reproducible.
+seed_memory() {
+  mkdir -p /var/lib/plow/workspace 2>/dev/null || true
+  if [ ! -f /var/lib/plow/workspace/MEMORY.md ] && [ -r /opt/plow/prompt/MEMORY.md ]; then
+    if cp /opt/plow/prompt/MEMORY.md /var/lib/plow/workspace/MEMORY.md 2>/dev/null; then
+      echo "[pinch] seeded long-term memory (MEMORY.md)"
+    fi
+  fi
+}
+seed_memory || true
+
 exec node /opt/plow/boot/main.js

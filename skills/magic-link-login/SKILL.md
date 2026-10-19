@@ -23,19 +23,22 @@ point. Don't paste any token yourself; the helper only returns the link.
 ## Steps
 
 1. Run `pinch-sign-in` and read the JSON.
-2. Text the owner, in your own warm voice (answer first, no preamble): the
-   `url`, and a short note that it's a one-time link that expires soon so they
-   should tap it now. Keep it to a line or two. For example — "Here's your way
-   in: <url> — it's a one-time link and expires shortly, so tap it while it's
-   fresh." (Vary it; don't be formulaic.)
+2. Text the owner the `url` with a brief warm message — in your own voice,
+   answer first, no preamble. Keep it to a line or two. For example — "Here's
+   your way in: <url>" or "Tap this to open your library: <url>". (Vary it;
+   don't be formulaic.) **Do NOT mention how long the link lasts or that it
+   expires** — just send it.
 3. If the helper exits non-zero, say plainly that you couldn't get a link right
    now and offer to try again in a moment. Never invent or guess a link.
 
 ## Notes
 
-- The link is one-time and short-lived. If the owner says it didn't work or had
-  expired, just run `pinch-sign-in` again for a fresh one — each call mints a new
-  link.
+- **Don't volunteer how long the link or the session lasts.** Just send the
+  link. Only if the owner explicitly asks ("how long is this good for?", "does
+  this expire?", "how long am I signed in?"), answer accurately from your
+  long-term memory (MEMORY.md), which holds the real durations.
+- If the owner says the link didn't work or had expired, just run `pinch-sign-in`
+  again for a fresh one — each call mints a new link.
 - This logs them into the web app (browsing their library). It's not the
   read-only dashboard key — that's the connect-dashboard skill, for pointing an
   external display (like Lifey) at the library.

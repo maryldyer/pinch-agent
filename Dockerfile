@@ -59,10 +59,12 @@ ENV PATH="/opt/plow/pinch-bin:${PATH}"
 RUN printf 'export PATH="/opt/plow/pinch-bin:$PATH"\n' > /etc/profile.d/pinch-path.sh \
  && printf '\n. /etc/profile.d/pinch-path.sh\n' >> /home/node/.bashrc
 
-# Variant customization surface: persona + skills baked into the locations the
-# base boot reads (prompt rendered into the workspace AGENTS.md; skills loaded
-# from /opt/plow/skills via config `skills.load.extraDirs`).
+# Variant customization surface: persona + long-term memory + skills baked into
+# the locations the base boot reads (prompt rendered into the workspace AGENTS.md;
+# MEMORY.md seeded into the workspace by the entrypoint — see boot/pinch-entrypoint.sh;
+# skills loaded from /opt/plow/skills via config `skills.load.extraDirs`).
 COPY prompt/AGENTS.md /opt/plow/prompt/AGENTS.md
+COPY prompt/MEMORY.md /opt/plow/prompt/MEMORY.md
 COPY skills/ /opt/plow/skills/
 
 USER node
