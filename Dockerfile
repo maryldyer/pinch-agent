@@ -22,11 +22,13 @@ ENV PINCH_BACKEND_URL=https://pinch.usesundays.com
 # The base ships text-only `z-ai/glm-5.2` as the primary model; a texted photo
 # reaches the agent but the primary can't read it, so photo capture would
 # silently fail. `anthropic/claude-sonnet-5` (declared image-capable in the base
-# config) is set as the primary via `agents.defaults.model`, which is a
-# non-owned agent default: once set it survives restarts. The base exposes no
-# build-time/env hook for this field and the state volume masks any baked config
-# file, so it is applied at boot through the base's documented, restart-surviving
-# `openclaw config set` path — see boot/pinch-entrypoint.sh.
+# config) is set as the primary via `agents.defaults.model`, a non-owned agent
+# default. The base exposes no build-time/env hook for this field and the state
+# volume masks any baked config file, so on a FRESH volume the entrypoint
+# pre-seeds `agents.defaults.model` into the persisted config BEFORE boot renders
+# it — the base's config render preserves that non-owned field, so the gateway
+# starts image-capable with no reload or restart (critical: the managed runtime
+# does not restart an agent that exits). See boot/pinch-entrypoint.sh.
 USER root
 COPY boot/pinch-entrypoint.sh /opt/plow/boot/pinch-entrypoint.sh
 RUN chmod 0755 /opt/plow/boot/pinch-entrypoint.sh

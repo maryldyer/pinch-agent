@@ -50,7 +50,13 @@ PINCH_CONFIG_PATH=/var/lib/plow/openclaw.json
 preseed_model_config() {
   [ -e "$PINCH_CONFIG_PATH" ] && return 0            # warm/existing volume — leave it
   mkdir -p /var/lib/plow 2>/dev/null || true
-  if cat > "$PINCH_CONFIG_PATH" 2>/dev/null <<'JSON'
+  # Write to a temp file, then atomically rename into place (mirrors the base
+  # syncConfig's tmp+rename). A partial/failed write (ENOSPC, interrupt) leaves the
+  # real path ABSENT rather than a corrupt 0-byte file — so base boot falls back to
+  # the full seed via ENOENT instead of THROWING on parse (which would park the
+  # agent, the exact down-on-managed failure this rework avoids).
+  tmp="$PINCH_CONFIG_PATH.tmp"
+  if cat > "$tmp" 2>/dev/null <<'JSON'
 {
   "meta": {},
   "agents": {
@@ -69,9 +75,15 @@ preseed_model_config() {
 }
 JSON
   then
-    chmod 0600 "$PINCH_CONFIG_PATH" 2>/dev/null || true
-    echo "[pinch] first boot (fresh volume): pre-seeded image-capable primary (claude-sonnet-5) so the first message works without a restart"
+    chmod 0600 "$tmp" 2>/dev/null || true
+    if mv -f "$tmp" "$PINCH_CONFIG_PATH" 2>/dev/null; then
+      echo "[pinch] first boot (fresh volume): pre-seeded image-capable primary (claude-sonnet-5) so the first message works without a restart"
+    else
+      rm -f "$tmp" 2>/dev/null || true
+      echo "[pinch] WARN: could not install pre-seeded model config; relying on background config set" >&2
+    fi
   else
+    rm -f "$tmp" 2>/dev/null || true
     echo "[pinch] WARN: could not pre-seed model config; relying on background config set" >&2
   fi
   return 0
