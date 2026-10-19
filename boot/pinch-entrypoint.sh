@@ -41,12 +41,19 @@ PINCH_CONFIG_PATH=/var/lib/plow/openclaw.json
 # it, but ONLY on a fresh volume (absent file). `syncConfig` preserves this
 # non-owned field and refreshes its owned `$include` paths around it, so the
 # gateway starts on sonnet with no restart. We replicate the base's other
-# non-owned defaults here (workspace / skipBootstrap / sandbox / skills dirs / mcp
-# idle ttl) because syncConfig only auto-fills those when the file is absent —
-# omitting them would drop skill loading and re-trigger bootstrap. These mirror the
-# base config render; the two that matter functionally (/var/lib/plow/workspace and
-# /opt/plow/skills) are already Pinch-pinned (main.js workspace + Dockerfile skills
-# COPY). Best-effort; never fails the agent.
+# non-owned defaults here (workspace / skipBootstrap / sandbox / modelPolicy /
+# per-model `models` params / skills dirs / mcp idle ttl) because syncConfig only
+# auto-fills those when the file is absent — omitting any would drop it (skills
+# would stop loading, bootstrap would re-run, glm fallback would lose its
+# reasoning-disabled params). These mirror the PINNED base's fresh render exactly,
+# with ONLY model.primary overridden to sonnet.
+#
+# ⚠️  This non-owned set is pinned to the base digest in the Dockerfile. On ANY base
+# digest bump, RE-VERIFY it: re-run the drift check (pinned base `syncConfig` over
+# the fresh no-file path vs this pre-seed) and confirm the non-owned residue is
+# identical except the intended sonnet override — a base that adds/changes a
+# non-owned `agents.defaults` field would otherwise be silently dropped here.
+# Best-effort; never fails the agent.
 preseed_model_config() {
   [ -e "$PINCH_CONFIG_PATH" ] && return 0            # warm/existing volume — leave it
   mkdir -p /var/lib/plow 2>/dev/null || true
@@ -64,7 +71,9 @@ preseed_model_config() {
       "workspace": "/var/lib/plow/workspace",
       "skipBootstrap": true,
       "model": { "primary": "plow/anthropic/claude-sonnet-5", "fallbacks": ["plow/z-ai/glm-5.2"] },
-      "sandbox": { "mode": "off" }
+      "sandbox": { "mode": "off" },
+      "modelPolicy": {},
+      "models": { "plow/z-ai/glm-5.2": { "params": { "extraBody": { "reasoning": { "enabled": false } } } } }
     }
   },
   "mcp": { "sessionIdleTtlMs": 300000 },
