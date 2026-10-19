@@ -18,6 +18,11 @@ services:
     volumes:
       # OpenClaw state dir (openclaw.json, workspace, boot log, agent sessions).
       - state:/var/lib/plow
+    # Local/clean-room hardening: bring the agent back if its process exits, but
+    # NOT after an explicit `docker compose stop`/`down`. (The managed exe.dev
+    # runtime ignores this file and supervises its own VM lifecycle; this only
+    # covers the local Compose path.)
+    restart: unless-stopped
     # The agent checkpoints on SIGTERM; its supervisor needs ~30s, so override
     # Docker's default 10s to avoid orphaning the transcript lease.
     stop_grace_period: 35s

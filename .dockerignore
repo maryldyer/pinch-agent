@@ -3,3 +3,8 @@
 README.md
 *.md.bak
 plow-credentials
+# Secrets: the live account #1 token lives in pinch-secrets.env, and any *.env is
+# run-time-only (supplied via env_file / plow-agents env). Nothing COPYs them, but
+# keep them out of the build context entirely so no secret can ever be baked.
+pinch-secrets.env
+*.env
