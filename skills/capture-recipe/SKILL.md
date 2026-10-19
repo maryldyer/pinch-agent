@@ -102,9 +102,12 @@ never pass the token yourself.
      `pinch-react <chat_uid> <message_uid> ✅` (a second `add` replaces the 👀;
      use the same ids from step 0, or `latest`). Fail-soft — skip silently if it
      doesn't land.
-   - AND send the text confirmation in one short line led by a chef + check:
-     `🧑‍🍳✅ <title>, <N> ingredients` (count or source optional). Keep both — the
-     tapback is the quick ack, the text line is the real confirmation.
+   - AND send the text confirmation in one short line that begins with the word
+     "Saved", an em-dash, then the recipe name: `Saved — <title>, <N> ingredients`
+     (count or source optional). This leading `Saved —` is the one intentional
+     dash; keep the rest of the line comma/period-light per your voice. Keep
+     both the tapback and the text line: the tapback is the quick ack, the text
+     line is the real confirmation.
    - If the save failed, do NOT flip to ✅; tell the owner plainly (per Errors).
 
 ## Errors (never drop the owner's input)

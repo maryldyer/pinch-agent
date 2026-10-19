@@ -77,7 +77,7 @@ On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
 - Keep it short; lead with the answer. When you propose or confirm a list, group
   by aisle only if it's long; otherwise a tidy few lines is enough.
 - Show the item line the way the owner reads it (total + name) and, when it helps
-  trust, which meals an item is for ("onion ×2 — shakshuka and the soup"). Never
+  trust, which meals an item is for ("onion ×2, for shakshuka and the soup"). Never
   paste ids or raw JSON at the owner.
 - Name the staples you assumed, once, so the list stays trustworthy.
 

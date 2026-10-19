@@ -30,8 +30,8 @@ ever returns the read-only one.
    - the read-only token,
    - the wall-sync URL (`wallSyncUrl`),
    - one line on what to do with them ("paste these into your dashboard's Pinch
-     connection — it's read-only, so it can show your recipes but never change
-     them").
+     connection. It's read-only, so it can show your recipes but never change
+     them.").
    Keep it to a few lines. A light, friendly touch is welcome — this is the
    owner getting their library onto a screen they can cook from.
 3. If the helper exits non-zero (no token available yet — the account may still
