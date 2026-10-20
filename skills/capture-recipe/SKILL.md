@@ -41,6 +41,17 @@ never pass the token yourself.
 
 ## Steps
 
+**First, is there anything to capture yet?** Often the owner sends this as two
+quick messages: "can you save this?" and then, a moment later, the link or photo.
+If the current message signals they want to save something (they mention saving,
+a recipe, a link, or that they are sending a photo) but nothing is actually
+attached (no URL in the text, no photo or attachment, no pasted recipe), do NOT
+run the capture steps and do NOT say you can't see what they sent. Reply in one
+warm, brief line that invites it, then end the turn. For example: "Send it over
+and I will save it." or "Happy to. Send me the link or a photo and it is yours."
+When the link or photo arrives in their next message, capture it normally with
+the steps below. (Warm and brief, and never a dash, per your voice.)
+
 0. **Acknowledge immediately with a 👀 tapback.** As soon as you see the owner
    sent something to capture (a recipe URL, a photo, a social/video post, pasted
    recipe text), react to THAT inbound message with 👀 so they know you're on it:
@@ -103,11 +114,11 @@ never pass the token yourself.
      use the same ids from step 0, or `latest`). Fail-soft — skip silently if it
      doesn't land.
    - AND send the text confirmation in one short line that begins with the word
-     "Saved", an em-dash, then the recipe name: `Saved — <title>, <N> ingredients`
-     (count or source optional). This leading `Saved —` is the one intentional
-     dash; keep the rest of the line comma/period-light per your voice. Keep
-     both the tapback and the text line: the tapback is the quick ack, the text
-     line is the real confirmation.
+     "Saved", then the recipe name, with no dash: `Saved. <title>, <N> ingredients`
+     (count or source optional). Follow your voice rule: never use a dash as
+     punctuation anywhere in the line; lean on commas and periods. Keep both the
+     tapback and the text line: the tapback is the quick ack, the text line is the
+     real confirmation.
    - If the save failed, do NOT flip to ✅; tell the owner plainly (per Errors).
 
 ## Errors (never drop the owner's input)
