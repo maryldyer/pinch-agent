@@ -77,6 +77,35 @@ test('cache miss — mints an assertion, registers with X-Plow-Index-Assertion, 
   }
 });
 
+test('managed runtime (no PLOW_AGENT_TOKEN) — mints through the PLOW_API_BASE proxy with NO bearer', async () => {
+  // Regression for the managed "no API token available" bug: on exe.dev the token
+  // never reaches the VM (PLOW_AGENT_TOKEN unset / "proxied"), so the assertion
+  // must be minted through the token-injecting PLOW_API_BASE proxy with no
+  // Authorization header of our own. Red on the old code (it threw NO_PLOW_TOKEN).
+  const PROXY = 'https://plow-abc123.int.exe.xyz';
+  const { dir, tokensPath } = tmpTokensPath();
+  try {
+    const fetchImpl = registerRoutes({ full: 'managed_full', readonly: 'managed_ro' });
+    const r = await onboarding.ensureRegistered({
+      tokensPath,
+      backendUrl: BACKEND,
+      plowAgentToken: 'proxied',   // exe.dev placeholder — not a real bearer
+      plowApiBase: PROXY,
+      fetchImpl,
+    });
+
+    assert.equal(r.registered, true);
+    assert.equal(r.tokens.full, 'managed_full');
+
+    const mint = fetchImpl.calls.find((c) => c.url.includes('/v1/auth/index-identity'));
+    assert.ok(mint, 'minted an assertion');
+    assert.ok(mint.url.startsWith(PROXY), `mint went through the proxy, got ${mint.url}`);
+    assert.equal(mint.init.headers.Authorization, undefined, 'no bearer of ours — the proxy injects the token');
+  } finally {
+    cleanup(dir);
+  }
+});
+
 test('rotate — re-registers even with a cached pair and overwrites the cache', async () => {
   const { dir, tokensPath } = tmpTokensPath();
   try {
@@ -138,11 +167,11 @@ test('register rate-limited (429) — surfaces RATE_LIMITED', async () => {
   }
 });
 
-test('no usable PLOW_AGENT_TOKEN — fails before any network call', async () => {
+test('no PLOW_AGENT_TOKEN and no PLOW_API_BASE proxy — fails before any network call', async () => {
   const { dir, tokensPath } = tmpTokensPath();
   try {
     await assert.rejects(
-      onboarding.ensureRegistered({ tokensPath, backendUrl: BACKEND, plowAgentToken: 'proxied', fetchImpl: neverFetch() }),
+      onboarding.ensureRegistered({ tokensPath, backendUrl: BACKEND, plowAgentToken: 'proxied', plowApiBase: '', fetchImpl: neverFetch() }),
       (e) => e.code === 'NO_PLOW_TOKEN',
     );
   } finally {

@@ -82,20 +82,44 @@ function writeCachedTokens(pair, opts = {}) {
 
 // --- Plow assertion + backend register -------------------------------------
 
-// Mint a short-lived Index Identity assertion from Plow with the agent's own
-// bearer. The bearer stays in this process; only the assertion travels onward.
-async function mintAssertion({ plowAgentToken, indexApiBase, fetchImpl } = {}) {
+// Mint a short-lived Index Identity assertion from Plow. The bearer stays in this
+// process; only the assertion travels onward.
+//
+// Two runtimes, two token mechanisms (see the Plow cloud-agents image contract):
+//   • LOCAL / self-hosted (`plow-agents deploy --local`): the real agent bearer is
+//     in `PLOW_AGENT_TOKEN`. Call the index host directly with `Authorization:
+//     Bearer <token>`.
+//   • MANAGED / exe.dev (the published-image 1-click path): the token NEVER reaches
+//     the VM, so `PLOW_AGENT_TOKEN` is unset (or the placeholder "proxied").
+//     `PLOW_API_BASE` is an exe.dev proxy that forwards to the Plow API and injects
+//     the agent's token into every request. So mint THROUGH `PLOW_API_BASE` with NO
+//     Authorization header and let the proxy add the bearer (mirrors the contract's
+//     own `/v1/agents/cloud/me` example). Without this, managed self-register has no
+//     bearer and fails -> no account token -> "no API token available".
+async function mintAssertion({ plowAgentToken, indexApiBase, plowApiBase, fetchImpl } = {}) {
   const token = (plowAgentToken || '').trim();
-  if (!token || token === 'proxied') {
-    throw new OnboardingError('no usable PLOW_AGENT_TOKEN to mint an Index Identity assertion', 'NO_PLOW_TOKEN');
+  const hasRealToken = token && token !== 'proxied';
+  let url, headers;
+  if (hasRealToken) {
+    // Local / self-hosted: real bearer in env, call the index host directly.
+    const base = (indexApiBase || DEFAULT_INDEX_API_BASE).replace(/\/+$/, '');
+    url = `${base}/v1/auth/index-identity`;
+    headers = { Authorization: `Bearer ${token}` };
+  } else {
+    // Managed (exe.dev): mint through the token-injecting proxy, no bearer of ours.
+    const base = (plowApiBase || '').replace(/\/+$/, '');
+    if (!base) {
+      throw new OnboardingError('no PLOW_AGENT_TOKEN and no PLOW_API_BASE proxy to mint an Index Identity assertion', 'NO_PLOW_TOKEN');
+    }
+    url = `${base}/v1/auth/index-identity`;
+    headers = {};
   }
-  const base = (indexApiBase || DEFAULT_INDEX_API_BASE).replace(/\/+$/, '');
   const fetchFn = fetchImpl || globalThis.fetch;
   let res;
   try {
-    res = await fetchFn(`${base}/v1/auth/index-identity`, {
+    res = await fetchFn(url, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     });
   } catch (e) {
     throw new OnboardingError(`index-identity mint unreachable: ${e.message}`, 'MINT_UNREACHABLE');
@@ -177,6 +201,7 @@ async function ensureRegistered(opts = {}) {
     backendUrl = process.env.PINCH_BACKEND_URL,
     plowAgentToken = process.env.PLOW_AGENT_TOKEN,
     indexApiBase = process.env.PLOW_INDEX_API_BASE,
+    plowApiBase = process.env.PLOW_API_BASE,
     fetchImpl = globalThis.fetch,
     logger = () => {},
   } = opts;
@@ -191,7 +216,7 @@ async function ensureRegistered(opts = {}) {
   }
 
   logger(rotate ? 'rotation requested — minting a fresh Index Identity assertion' : 'no cached token — minting an Index Identity assertion');
-  const assertion = await mintAssertion({ plowAgentToken, indexApiBase, fetchImpl });
+  const assertion = await mintAssertion({ plowAgentToken, indexApiBase, plowApiBase, fetchImpl });
   logger('assertion minted — calling backend /api/pinch/register');
   const tokens = await registerWithBackend({ backendUrl, assertion, rotate, fetchImpl });
   const written = writeCachedTokens(tokens, cacheOpts);
