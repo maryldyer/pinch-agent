@@ -226,10 +226,11 @@ async function ensureRegistered(opts = {}) {
 
 // --- "connect dashboard" (§7 / Chunk 7) ------------------------------------
 
-// Produce a read-only token for the user's dashboard, plus the wall-sync URL.
+// Produce a read-only token for the user's dashboard, plus a ready-to-paste embed
+// URL (backend /embed?token=<readonly>) they drop straight into the Hive wall.
 //
 // Preferred (production, spec §7): POST the backend connect-dashboard endpoint
-// with the account full token — it mints a FRESH readonly and revokes the prior
+// with the account full token. It mints a FRESH readonly and revokes the prior
 // one (rotate). That endpoint is NOT live yet (Chunk 7), so when it is
 // unreachable/unusable this falls back to the once-off readonly cached at
 // registration (§7, "Chunk 5 returns a readonly once; the agent caches it").
@@ -246,7 +247,10 @@ async function connectDashboard(opts = {}) {
   const cached = readCachedTokens(cacheOpts);
   const fullToken = cached && cached.full ? cached.full : (process.env.PINCH_API_TOKEN || '').trim();
   const base = (backendUrl || '').replace(/\/+$/, '');
-  const wallSyncUrl = base ? `${base}/wall-sync.mjs` : null;
+  // The ready-to-paste link for embedding Pinch in the Hive wall: the backend
+  // /embed route authenticated by the owner's read-only token in the query string.
+  // Built per token (below), since it carries whichever readonly we hand back.
+  const embedUrlFor = (readonly) => (base && readonly ? `${base}/embed?token=${encodeURIComponent(readonly)}` : null);
   const fetchFn = fetchImpl || globalThis.fetch;
 
   // Preferred path: rotate a fresh readonly via the backend (Chunk 7).
@@ -266,7 +270,7 @@ async function connectDashboard(opts = {}) {
         }
         if (data && typeof data.readonly === 'string' && data.readonly) {
           logger('rotated a fresh dashboard token via the connect-dashboard endpoint');
-          return { source: 'rotated', readonly: data.readonly, wallSyncUrl };
+          return { source: 'rotated', readonly: data.readonly, embedUrl: embedUrlFor(data.readonly) };
         }
         logger('connect-dashboard endpoint returned no readonly token');
       } else {
@@ -281,7 +285,7 @@ async function connectDashboard(opts = {}) {
   // Fallback: the once-off readonly token cached at registration.
   if (allowCacheFallback && cached && cached.readonly) {
     logger('using the cached readonly token from registration');
-    return { source: 'cached', readonly: cached.readonly, wallSyncUrl };
+    return { source: 'cached', readonly: cached.readonly, embedUrl: embedUrlFor(cached.readonly) };
   }
 
   throw new OnboardingError(

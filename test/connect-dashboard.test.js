@@ -17,7 +17,7 @@ test('connectDashboard — rotates a fresh readonly via the endpoint when live',
     const r = await onboarding.connectDashboard({ tokensPath, backendUrl: BACKEND, fetchImpl });
     assert.equal(r.source, 'rotated');
     assert.equal(r.readonly, 'fresh_rotated_ro');
-    assert.equal(r.wallSyncUrl, `${BACKEND}/wall-sync.mjs`);
+    assert.equal(r.embedUrl, `${BACKEND}/embed?token=fresh_rotated_ro`);
     // Authed with the account FULL token.
     const call = fetchImpl.calls.find((c) => c.url.includes('/api/pinch/connect-dashboard'));
     assert.equal(call.init.headers.Authorization, 'Bearer full_tok');
@@ -36,7 +36,7 @@ test('connectDashboard — endpoint not live (404) falls back to the cached read
     const r = await onboarding.connectDashboard({ tokensPath, backendUrl: BACKEND, fetchImpl });
     assert.equal(r.source, 'cached');
     assert.equal(r.readonly, 'cached_ro');
-    assert.equal(r.wallSyncUrl, `${BACKEND}/wall-sync.mjs`);
+    assert.equal(r.embedUrl, `${BACKEND}/embed?token=cached_ro`);
   } finally {
     cleanup(dir);
   }

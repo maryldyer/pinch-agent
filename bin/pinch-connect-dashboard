@@ -2,16 +2,17 @@
 // pinch-connect-dashboard — produce the account's read-only dashboard token.
 //
 // Usage:
-//   pinch-connect-dashboard         # prints { readonly, wallSyncUrl, source } JSON
+//   pinch-connect-dashboard         # prints { readonly, embedUrl, source } JSON
 //
 // Invoked by the "connect dashboard" skill when the owner texts an intent to
 // pair their dashboard. Preferred path (spec §7): rotate a FRESH readonly token
 // via the backend connect-dashboard endpoint (revoking the prior one). That
 // endpoint is not live yet (Chunk 7), so this falls back to the once-off
-// readonly token cached at registration.
+// readonly token cached at registration. `embedUrl` is the ready-to-paste link
+// for the Hive wall: backend /embed?token=<the readonly token>.
 //
 // stdout: a JSON object the skill reads to compose the warm reply. The `readonly`
-// value is the OWNER'S token, meant to be handed to them — printing it here is
+// value is the OWNER'S token, meant to be handed to them. Printing it here is
 // the intended delivery path, not a leak. The full token and PLOW_AGENT_TOKEN
 // are NEVER printed. Exit 0 on success, non-zero if no token is available.
 'use strict';
@@ -22,7 +23,7 @@ const log = (m) => process.stderr.write(`pinch-connect-dashboard: ${m}\n`);
 (async () => {
   try {
     const r = await connectDashboard({ logger: log });
-    process.stdout.write(JSON.stringify({ readonly: r.readonly, wallSyncUrl: r.wallSyncUrl, source: r.source }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({ readonly: r.readonly, embedUrl: r.embedUrl, source: r.source }, null, 2) + '\n');
     process.exit(0);
   } catch (e) {
     log(`WARN: ${e.message}`);
