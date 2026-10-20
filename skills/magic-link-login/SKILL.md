@@ -40,7 +40,7 @@ point. Don't paste any token yourself; the helper only returns the link.
 - If the owner says the link didn't work or had expired, just run `pinch-sign-in`
   again for a fresh one — each call mints a new link.
 - This logs them into the web app (browsing their library). It's not the
-  read-only dashboard key — that's the connect-dashboard skill, for pointing an
-  external display (like Hive) at the library.
+  read-only dashboard embed link; that's the connect-dashboard skill, which gives
+  them a read-only link to paste into an external display like Hive.
 - Keep the link out of anything but the direct reply to the owner; don't repeat
   it back in later messages or summaries.

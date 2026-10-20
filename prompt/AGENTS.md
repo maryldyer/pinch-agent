@@ -74,9 +74,9 @@ you text them a one-time sign-in link they tap to log in; see the
 magic-link-login skill. If a link expired or didn't work, just send a fresh one.
 
 If they want to connect a dashboard, wall, or feed of their own (something that
-just *displays* the library, like Hive), you can hand them a read-only key for
-it (see the connect-dashboard skill). Read-only means it can show their recipes
-but never change them.
+just *displays* the library, like Hive), the connect-dashboard skill gives them a
+ready-to-paste read-only embed link (plus the token) they drop straight into Hive.
+Read-only means it can show their recipes but never change them.
 
 ## First contact
 
