@@ -226,20 +226,28 @@ async function ensureRegistered(opts = {}) {
 
 // --- "connect dashboard" (§7 / Chunk 7) ------------------------------------
 
-// Produce a read-only token for the user's dashboard, plus a ready-to-paste embed
-// URL (backend /embed?token=<readonly>) they drop straight into the Hive wall.
+// Hand the owner a ready-to-paste embed URL for their dashboard (the Hive wall),
+// backed by a READ-WRITE token so they can add groceries and edit lists from the
+// wall, not just view.
 //
-// Preferred (production, spec §7): POST the backend connect-dashboard endpoint
-// with the account full token. It mints a FRESH readonly and revokes the prior
-// one (rotate). That endpoint is NOT live yet (Chunk 7), so when it is
-// unreachable/unusable this falls back to the once-off readonly cached at
-// registration (§7, "Chunk 5 returns a readonly once; the agent caches it").
+// Production contract (spec §7, read-write embed): POST the backend
+// connect-dashboard endpoint with the account full token. The backend mints a
+// dedicated FULL (read-write) token and returns the ready-to-paste link that
+// already carries it: `{ embedUrl: ".../embed?token=<FULL>", token: "<FULL>" }`
+// (there is NO `readonly` field anymore). We RELAY that embedUrl as-is — the
+// backend owns the public origin — falling back to building it from `token` only
+// if the response omitted the URL.
+//
+// We deliberately DO NOT fall back to the once-off readonly token cached at
+// registration: a readonly link renders the library but 403s every write, which
+// is exactly the "can't add groceries from the wall" failure. On any endpoint
+// hiccup we surface an error so the caller can retry, never a silent readonly
+// (or stale) link.
 async function connectDashboard(opts = {}) {
   const {
     backendUrl = process.env.PINCH_BACKEND_URL,
     stateDir,
     tokensPath: tp,
-    allowCacheFallback = true,
     fetchImpl = globalThis.fetch,
     logger = () => {},
   } = opts;
@@ -247,51 +255,58 @@ async function connectDashboard(opts = {}) {
   const cached = readCachedTokens(cacheOpts);
   const fullToken = cached && cached.full ? cached.full : (process.env.PINCH_API_TOKEN || '').trim();
   const base = (backendUrl || '').replace(/\/+$/, '');
-  // The ready-to-paste link for embedding Pinch in the Hive wall: the backend
-  // /embed route authenticated by the owner's read-only token in the query string.
-  // Built per token (below), since it carries whichever readonly we hand back.
-  const embedUrlFor = (readonly) => (base && readonly ? `${base}/embed?token=${encodeURIComponent(readonly)}` : null);
   const fetchFn = fetchImpl || globalThis.fetch;
 
-  // Preferred path: rotate a fresh readonly via the backend (Chunk 7).
-  if (fullToken && base) {
-    try {
-      const res = await fetchFn(`${base}/api/pinch/connect-dashboard`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${fullToken}`, 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      if (res.ok) {
-        let data;
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
-        }
-        if (data && typeof data.readonly === 'string' && data.readonly) {
-          logger('rotated a fresh dashboard token via the connect-dashboard endpoint');
-          return { source: 'rotated', readonly: data.readonly, embedUrl: embedUrlFor(data.readonly) };
-        }
-        logger('connect-dashboard endpoint returned no readonly token');
-      } else {
-        // Endpoint reachable but not usable yet (e.g. 404 before Chunk 7 ships).
-        logger(`connect-dashboard endpoint not usable (HTTP ${res.status})`);
-      }
-    } catch (e) {
-      logger(`connect-dashboard endpoint unreachable: ${e.message}`);
-    }
+  if (!fullToken) {
+    throw new OnboardingError('no account token available to connect the dashboard', 'NO_FULL_TOKEN');
+  }
+  if (!base) {
+    throw new OnboardingError('PINCH_BACKEND_URL is not set', 'NO_BACKEND');
   }
 
-  // Fallback: the once-off readonly token cached at registration.
-  if (allowCacheFallback && cached && cached.readonly) {
-    logger('using the cached readonly token from registration');
-    return { source: 'cached', readonly: cached.readonly, embedUrl: embedUrlFor(cached.readonly) };
+  // A read-write embed URL carrying `token` (the /embed route authorizes by the
+  // token in the query string; a full token makes the embed interactive).
+  const embedUrlFor = (token) => (token ? `${base}/embed?token=${encodeURIComponent(token)}` : null);
+
+  let res;
+  try {
+    res = await fetchFn(`${base}/api/pinch/connect-dashboard`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${fullToken}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+  } catch (e) {
+    throw new OnboardingError(`connect-dashboard endpoint unreachable: ${e.message}`, 'CONNECT_UNREACHABLE');
   }
 
-  throw new OnboardingError(
-    'no dashboard token available (connect-dashboard endpoint not live and no cached readonly token)',
-    'NO_READONLY',
-  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new OnboardingError(
+      `connect-dashboard failed: HTTP ${res.status}: ${text.slice(0, 200)}`,
+      res.status === 401 ? 'CONNECT_UNAUTHORIZED' : 'CONNECT_FAILED',
+    );
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new OnboardingError('connect-dashboard returned non-JSON', 'CONNECT_BAD_RESPONSE');
+  }
+
+  // Relay the backend's read-write link. Prefer the endpoint's own embedUrl;
+  // fall back to building it from the returned full token if the URL was omitted.
+  const token = typeof data?.token === 'string' && data.token ? data.token : null;
+  const embedUrl =
+    typeof data?.embedUrl === 'string' && data.embedUrl ? data.embedUrl : embedUrlFor(token);
+
+  if (embedUrl) {
+    logger('minted a fresh read-write dashboard link via the connect-dashboard endpoint');
+    return { source: 'rotated', token, embedUrl };
+  }
+
+  // 200 but nothing usable — surface it rather than hand a stale/readonly link.
+  throw new OnboardingError('connect-dashboard returned no embed link or token', 'NO_EMBED_LINK');
 }
 
 module.exports = {
