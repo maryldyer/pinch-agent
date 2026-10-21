@@ -5,12 +5,17 @@
 # actually boots (a tag is a name someone can move, and this image boots holding
 # a live Plow credential). Base is published to a public ECR registry and is
 # pullable anonymously — no registry auth needed to build.
-#   repo commit: ddbaa6bc0f9e071d9411777b91590e755e367d84
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ddbaa6bc0f9e071d9411777b91590e755e367d84@sha256:5b0ebf5e33514b09f0f22f1c14424a19b4eb3fc21adfaeb260002f76d362478c
+#   repo commit: d2ac276cac263f86c4d7f537178e175269fbdbc3
+# (base bump: fixes the 30-min "All automations healthy" heartbeat texts + the
+#  NO_REPLY-ending replies; plow-openclaw-agent #91/#43.)
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-d2ac276cac263f86c4d7f537178e175269fbdbc3@sha256:1349218b88f2b2ce2684b0aa75e7dc5b8e3dcc2537959dbd9b3ac9b3ee511705
 
 # --- Pinch backend wiring -------------------------------------------------
 # Non-secret base URL of the live recipe backend the capture/library skills call.
 ENV PINCH_BACKEND_URL=https://pinch.usesundays.com
+# Bake the Agent Index id so the base's usage reporter / identity attaches to the
+# right agent record (the base ships none by default).
+ENV AGENT_ID=pinch
 # The bootstrap/fallback bearer (= backend PINCH_RECIPE_TOKEN) is a SECRET
 # supplied at run time as `PINCH_API_TOKEN` via env/secret (plow-agents env /
 # compose env_file). It is deliberately NOT declared as an ENV here, so no
