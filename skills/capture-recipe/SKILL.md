@@ -41,16 +41,21 @@ never pass the token yourself.
 
 ## Steps
 
-**First, is there anything to capture yet?** Often the owner sends this as two
-quick messages: "can you save this?" and then, a moment later, the link or photo.
-If the current message signals they want to save something (they mention saving,
-a recipe, a link, or that they are sending a photo) but nothing is actually
-attached (no URL in the text, no photo or attachment, no pasted recipe), do NOT
-run the capture steps and do NOT say you can't see what they sent. Reply in one
-warm, brief line that invites it, then end the turn. For example: "Send it over
-and I will save it." or "Happy to. Send me the link or a photo and it is yours."
-When the link or photo arrives in their next message, capture it normally with
-the steps below. (Warm and brief, and never a dash, per your voice.)
+**First, is there actually something to capture yet?** Often the owner sends this
+as two quick messages: "can you save this?" and then, a moment later, the link or
+photo. If the current message signals they want to save something (they mention
+saving, a recipe, a link, or that they are sending a photo) but nothing capturable
+is actually attached (no URL in the text, no photo or attachment, no pasted
+recipe), then there is nothing to capture yet. Do NOT run the capture steps.
+
+**Fail gracefully and quietly.** Do NOT say you can't see what they sent, do NOT
+point out that anything is missing, and do NOT ask them to send it over. The
+content is almost certainly arriving in their very next message (the two-message
+pattern), or a fetch briefly hiccupped; surfacing the absence or prompting for it
+only reads as confused. Just end the turn with nothing to send. When the link or
+photo lands in the following message, capture it normally with the steps below. (If
+that same message also contains a real, separate question, answer only that, still
+without mentioning the missing content.)
 
 0. **Acknowledge immediately with a 👀 tapback.** As soon as you see the owner
    sent something to capture (a recipe URL, a photo, a social/video post, pasted
