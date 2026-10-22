@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+// pinch-set-image — set a SAVED recipe's photo (POST /api/pinch/recipes/:id/image).
+//
+// Usage:
+//   pinch-set-image <recipeId> <imagePath>        # a local file (a texted photo)
+//   pinch-set-image <recipeId> --url <imageUrl>   # a hosted image URL
+//
+// The image endpoint takes a raw image body (image/jpeg|png|webp, magic-byte
+// sniffed, 415 otherwise) up to 4MB (413 over), or JSON { url } which the backend
+// fetches itself. A texted iOS photo is usually HEIC (415) and often >4MB (413),
+// so for a LOCAL file we normalize with ImageMagick to an auto-oriented JPEG,
+// downscaled and byte-size-capped to <=4MB, before POSTing image/jpeg. On 413 we
+// downscale harder and retry; on 415 we re-encode and retry. The --url form hands
+// the URL straight to the backend (it fetches + stores), no local conversion.
+//
+// Auth is the account's FULL token (the endpoint 403s a readonly token), the same
+// token plumbing pinch-save uses. Reads PINCH_BACKEND_URL from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { spawnSync } = require('node:child_process');
+const { readFileSync, existsSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { resolveFullToken } = require('./lib/pinch-token');
+
+const BASE = (process.env.PINCH_BACKEND_URL || '').replace(/\/+$/, '');
+const TOKEN = resolveFullToken();
+function die(msg, code = 1) { process.stderr.write(`pinch-set-image: ${msg}\n`); process.exit(code); }
+if (!BASE) die('PINCH_BACKEND_URL is not set', 2);
+if (!TOKEN) die('no API token available (no cached account token and PINCH_API_TOKEN is not set)', 2);
+
+const args = process.argv.slice(2);
+const recipeId = args[0];
+if (!recipeId || recipeId.startsWith('--')) {
+  die('usage: pinch-set-image <recipeId> <imagePath>  (or <recipeId> --url <imageUrl>)', 2);
+}
+if (!/^[A-Za-z0-9_-]+$/.test(recipeId)) die(`invalid recipe id "${recipeId}"`, 2);
+const urlIdx = args.indexOf('--url');
+const urlArg = urlIdx !== -1 ? args[urlIdx + 1] : null;
+const imagePath = urlIdx === -1 ? args[1] : null;
+
+const MAX_BYTES = 4 * 1024 * 1024;
+
+// Decode (HEIC via libheif / jpeg / png / webp), strip metadata, auto-orient, cap
+// dimensions, and target a byte size so we land <=4MB. `[0]` takes the primary
+// image of a multi-image HEIC. Returns the output jpeg path, or dies on failure.
+function toJpeg(src, extentKB, maxDim) {
+  const out = join(tmpdir(), `pinch-img-${randomUUID()}.jpg`);
+  const cv = (input) => spawnSync('convert', [
+    `${input}[0]`, '-auto-orient', '-strip',
+    '-resize', `${maxDim}x${maxDim}>`, '-quality', '88',
+    '-define', `jpeg:extent=${extentKB}KB`, out,
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+  let r = cv(src);
+  if (r.status !== 0) {
+    // ImageMagick may lack the HEIC delegate: decode via heif-convert, then re-run.
+    const mid = join(tmpdir(), `pinch-heic-${randomUUID()}.jpg`);
+    const h = spawnSync('heif-convert', ['-q', '92', src, mid], { stdio: ['ignore', 'ignore', 'pipe'] });
+    if (h.status !== 0 || !existsSync(mid)) {
+      die(`could not decode the image (${((r.stderr || '').toString().trim()) || 'convert failed'})`, 1);
+    }
+    r = cv(mid);
+    if (r.status !== 0) die(`could not re-encode the image (${(r.stderr || '').toString().trim()})`, 1);
+  }
+  if (!existsSync(out)) die('image conversion produced no output', 1);
+  return out;
+}
+
+async function post({ bytes, contentType, json }) {
+  const headers = { Authorization: `Bearer ${TOKEN}` };
+  let body;
+  if (json) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(json); }
+  else { headers['Content-Type'] = contentType; body = bytes; }
+  let res;
+  try {
+    res = await fetch(`${BASE}/api/pinch/recipes/${encodeURIComponent(recipeId)}/image`, { method: 'POST', headers, body });
+  } catch (e) {
+    die(`backend unreachable: ${e.message}`, 4);
+  }
+  return { res, text: await res.text() };
+}
+
+function confirm(text) {
+  let title = null;
+  try { title = JSON.parse(text).recipe && JSON.parse(text).recipe.title; } catch { /* ignore */ }
+  process.stdout.write(`Set the image on ${title ? `"${title}"` : `recipe ${recipeId}`}.\n`);
+}
+
+function fail(res, text) {
+  if (res.status === 404) die(`no recipe with id ${recipeId}`, 1);
+  if (res.status === 401 || res.status === 403) die("not authorized to set this recipe's image (needs the full account token)", 5);
+  if (res.status === 413) die('the image is still too large after downscaling', 1);
+  if (!res.ok) die(`backend returned ${res.status}: ${text}`, 1);
+}
+
+(async () => {
+  // Hosted URL: let the backend fetch + store it, no local conversion.
+  if (urlArg) {
+    if (!/^https?:\/\//i.test(urlArg)) die('--url must be an http(s) URL', 2);
+    const { res, text } = await post({ json: { url: urlArg } });
+    if (!res.ok) fail(res, text);
+    return confirm(text);
+  }
+
+  if (!imagePath) die('no image path given', 2);
+  if (!existsSync(imagePath)) die(`no file at ${imagePath}`, 2);
+
+  // Normalize to a <=4MB auto-oriented JPEG (handles HEIC + oversize in one pass),
+  // downscaling harder if the first pass somehow still exceeds 4MB.
+  let jpeg = toJpeg(imagePath, 3900, 3000);
+  if (readFileSync(jpeg).length > MAX_BYTES) jpeg = toJpeg(imagePath, 3000, 2048);
+
+  let { res, text } = await post({ bytes: readFileSync(jpeg), contentType: 'image/jpeg' });
+  if (res.status === 413) {
+    ({ res, text } = await post({ bytes: readFileSync(toJpeg(imagePath, 3000, 2048)), contentType: 'image/jpeg' }));
+  } else if (res.status === 415) {
+    // We already sent jpeg, so this is unexpected; re-encode once and retry.
+    ({ res, text } = await post({ bytes: readFileSync(toJpeg(imagePath, 3900, 3000)), contentType: 'image/jpeg' }));
+  }
+  if (!res.ok) fail(res, text);
+  confirm(text);
+})();

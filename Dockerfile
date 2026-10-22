@@ -38,15 +38,22 @@ USER root
 COPY boot/pinch-entrypoint.sh /opt/plow/boot/pinch-entrypoint.sh
 RUN chmod 0755 /opt/plow/boot/pinch-entrypoint.sh
 
-# Video capture deps (pinch-video): ffmpeg/ffprobe for frame sampling, and yt-dlp
-# for metadata + download. ffmpeg via apt (no recommends, lists cleaned to keep
-# the layer lean); yt-dlp as the pure-python single-file release (the base
-# already ships python3, so this is a ~3 MB file rather than the ~35 MB
-# pyinstaller binary) and works on both amd64 and arm64.
+# Media deps:
+#  - pinch-video: ffmpeg/ffprobe for frame sampling, and yt-dlp for metadata +
+#    download.
+#  - pinch-set-image: ImageMagick (+ libheif for HEIC decode) to turn a texted
+#    iOS photo (usually HEIC, often >4MB, both of which the image endpoint rejects)
+#    into an auto-oriented JPEG downscaled + size-capped to <=4MB before upload.
+#    ImageMagick decodes HEIC via its libheif delegate; `heif-convert` from
+#    libheif-examples is the decode fallback the helper uses if the delegate is
+#    absent. `jpeg:extent` lets one convert pass target the byte size.
+# All via apt (no recommends, lists cleaned to keep the layer lean). This is an
+# apt add only; it does NOT change the FROM base, so the pre-seed drift check does
+# not apply.
 # NOTE: yt-dlp is intentionally tracked at `latest` — site extractors break
 # often, so recency is the point; bump/pin on a schedule in production.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg \
+ && apt-get install -y --no-install-recommends ffmpeg imagemagick libheif1 libheif-examples \
  && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
  && chmod 0755 /usr/local/bin/yt-dlp \
