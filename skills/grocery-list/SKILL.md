@@ -1,6 +1,6 @@
 ---
 name: grocery-list
-description: Build and manage the owner's grocery lists over text — turn one or more recipes (links or names) into a consolidated shopping list, add a single recipe's ingredients or a hand-added item, check things off while shopping, and clear a finished list. Use when the owner wants a shopping list ("make me a grocery list for X, Y and Z", "add the rest of the carbonara to my list", "what do I need for tonight", "I got the eggs", "clear my list").
+description: Build and manage the owner's grocery lists over text — turn one or more recipes (links or names) into a consolidated shopping list, add a single recipe's ingredients or a hand-added item, check things off while shopping, and clear a finished list. Use when the owner wants a shopping list ("make me a grocery list for X, Y and Z", "add the rest of the carbonara to my list", "what do I need for tonight", "I got the eggs", "clear my list"). This skill builds and manages the list itself; it is NOT for locating a product in a physical store right now (which aisle is X in), that is the grocery-finder skill.
 ---
 # Grocery list
 
