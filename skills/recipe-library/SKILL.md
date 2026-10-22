@@ -29,6 +29,14 @@ environment and authenticate with your account's cached write token (the legacy
   detail, and answer the specific thing asked.
   - If the search returns several candidates, ask which one (short list) rather
     than guessing.
+  - **Only hand back the whole recipe when they actually want to see it**, when
+    they say show, open, pull up, send me, what's in, or how do I make it, or when
+    they just name a recipe with nothing else carrying over from the thread. If a
+    recipe name lands as a follow-up to a different question (a pairing, a swap,
+    timing, what to serve with it), that earlier question is what they mean: answer
+    THAT about this recipe, pulling its detail up quietly with `pinch-get`, instead
+    of dumping ingredients and steps. When it's genuinely unclear, one short line
+    ("the pairing, or the full recipe?") beats a wrong guess.
 
 ## Replying (SMS-appropriate)
 
