@@ -17,8 +17,12 @@ On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
 - `pinch-search "<query>"` / `pinch-get <id>` — resolve a recipe the owner names
   to its id (see the recipe-library skill).
 - `pinch-plan [--week YYYY-MM-DD] [--json]` — read the week's plan. Plain output
-  is one line per filled slot (`<date> <slot>: <recipe title>`); a never-planned
-  week prints nothing. `--json` gives `{ plan, entries }`.
+  is one line per entry: a recipe entry shows `<date> <slot>: <recipe title>`, and
+  a free-text NOTE entry shows `<date> <slot>: note: <text>`. A slot can hold more
+  than one entry (a recipe plus one or more notes), so you may see several lines for
+  the same day and slot; they are all real. A never-planned week prints nothing.
+  `--json` gives `{ plan, entries }`; each entry has `date`, `slot`, and either a
+  `recipeId` or a `note`. An entry with no `recipeId` is a note, NOT an empty slot.
 - `pinch-plan-set <date> <slot> <recipeId> [--week YYYY-MM-DD]` — assign a recipe
   to a `(date, slot)`. `date` is `YYYY-MM-DD`; `slot` is `breakfast|lunch|dinner`.
   Re-assigning a slot replaces what was there (one recipe per slot). The plan is
@@ -51,9 +55,13 @@ week), ask which week they mean rather than guessing.
 ## Answer what's planned ("what's for dinner?", "what's the week looking like")
 
 - `pinch-plan` and answer the specific question. "What's for dinner [tonight]" →
-  today's `dinner` line (titles are already resolved in the output). "The week"
-  → a short day-by-day rundown; skip empty slots. If nothing's planned, say so
-  and offer to help plan.
+  today's `dinner` line(s) (titles are already resolved in the output). "The week"
+  → a short day-by-day rundown. If nothing's planned, say so and offer to help plan.
+- Read EVERY entry, not just the ones with a recipe. A note entry (shown as
+  `note: <text>`) is a real, planned item: surface its day, slot, and the note
+  text. Never call a slot empty just because it has no recipe, and never skip or
+  invent around a note. If a slot holds both a recipe and a note, mention both. A
+  slot is only empty when `pinch-plan` prints no line for it at all.
 
 ## Hand off to the grocery list
 

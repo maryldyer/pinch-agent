@@ -6,10 +6,12 @@
 //   pinch-plan --week 2026-10-12   # a specific week (its Monday)
 //   pinch-plan --json              # raw { plan, entries }
 //
-// Prints one line per filled slot: "<date> <slot>: <recipe title>". Titles are
-// resolved from the library (the entries carry only a recipeId); an id with no
-// matching recipe is shown as "(recipe <id>)". A never-touched week prints
-// nothing (and notes it on stderr). Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
+// Prints one line per entry. A recipe entry resolves its recipeId to the library
+// title ("<date> <slot>: <title>"; an id with no matching recipe shows as
+// "(recipe <id>)"). A NOTE entry (no recipeId, a free-text `note`) prints the note
+// text ("<date> <slot>: note: <text>"). A slot can hold several entries (recipes
+// and/or notes); each gets its own line. A never-touched week prints nothing (and
+// notes it on stderr). Reads PINCH_BACKEND_URL and PINCH_API_TOKEN.
 'use strict';
 process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
 const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
@@ -39,14 +41,21 @@ if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) die('invalid --week (exp
     return;
   }
 
-  // Resolve each distinct recipeId → title (best-effort; ≤21 entries/week).
+  // Resolve each distinct recipeId → title (best-effort; ≤21 entries/week). Only
+  // recipe entries carry an id; note entries (recipeId null) are skipped here so we
+  // never fetch /recipes/null.
   const titles = new Map();
-  for (const id of new Set(entries.map((e) => e.recipeId))) {
+  for (const id of new Set(entries.map((e) => e.recipeId).filter(Boolean))) {
     const { res, text: rt } = await api(die, 'GET', `/api/pinch/recipes/${encodeURIComponent(id)}`, { allow404: true });
     titles.set(id, res.status === 404 ? `(recipe ${id})` : (parse(die, rt).title || `(recipe ${id})`));
   }
   process.stderr.write(`Week of ${weekLabel} — ${entries.length} planned\n`);
   for (const e of entries) {
-    process.stdout.write(`${e.date} ${e.slot}: ${titles.get(e.recipeId)}\n`);
+    // A note entry (no recipeId, a free-text note) is a real plan item, not an
+    // empty slot: surface its text. A recipe entry shows its title.
+    const label = e.recipeId
+      ? titles.get(e.recipeId)
+      : (e.note ? `note: ${e.note}` : '(empty)');
+    process.stdout.write(`${e.date} ${e.slot}: ${label}\n`);
   }
 })();
