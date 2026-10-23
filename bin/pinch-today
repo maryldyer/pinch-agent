@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+// pinch-today — what's planned for the household's REAL "today"
+// (GET /api/pinch/plan/today).
+//
+// Usage:
+//   pinch-today            # today's slots + the resolved local date
+//   pinch-today --json     # raw { accountPublicId, date, meals }
+//
+// WHY this exists (and why it is the helper to use for "what's for dinner" /
+// "what's planned today"): the backend resolves "today" in the HOUSEHOLD's
+// timezone (not UTC). The agent's injected system-prompt "Current date" renders
+// in UTC — in the evening Pacific it is already TOMORROW — so self-picking the
+// day off that date reads the wrong slot (often an empty one → "nothing
+// planned"). This helper asks the backend, which owns the local day boundary.
+//
+// The FIRST stdout line is `today: <YYYY-MM-DD> (<tz>)` — the backend's RESOLVED
+// LOCAL date. That is the agent's correct "today" anchor: derive "this week" and
+// any relative day ("tomorrow", "Wednesday") from THIS date, never from the raw
+// injected UTC date. Then one line per planned slot:
+//   "<slot>: <title>"            a recipe entry (title already resolved)
+//   "<slot>: note: <text>"       a free-text NOTE entry (a real planned item)
+// A slot can hold several entries, so you may see several lines for one slot;
+// they are all real. An empty day prints just the `today:` line (and notes it on
+// stderr).
+//
+// The timezone is `PINCH_OWNER_TZ` (default America/Los_Angeles) — passed as the
+// `?tz=` param so it is tunable without a rebuild and is the per-user hook for a
+// future multi-user build. The backend also defaults to America/Los_Angeles when
+// no tz is supplied, so this is correct even if the env is unset.
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { dieFor, requireEnv, api, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-today');
+requireEnv(die);
+
+const args = process.argv.slice(2);
+const asJson = args.includes('--json');
+const tz = (process.env.PINCH_OWNER_TZ || 'America/Los_Angeles').trim();
+
+(async () => {
+  const { text } = await api(die, 'GET', `/api/pinch/plan/today?tz=${encodeURIComponent(tz)}`);
+  const data = parse(die, text);
+  const meals = Array.isArray(data.meals) ? data.meals : [];
+
+  if (asJson) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+
+  // The resolved LOCAL date (the day the household is actually living) — the
+  // agent's "today" anchor. Always printed, even on an empty day.
+  process.stdout.write(`today: ${data.date} (${tz})\n`);
+
+  if (meals.length === 0) {
+    process.stderr.write(`Nothing planned for ${data.date}\n`);
+    return;
+  }
+
+  process.stderr.write(`${meals.length} planned for ${data.date}\n`);
+  for (const m of meals) {
+    // A NOTE entry (no recipe) surfaces its text; a recipe entry shows its title.
+    const label = m.note ? `note: ${m.note}` : (m.title || `(recipe ${m.recipeId})`);
+    process.stdout.write(`${m.slot}: ${label}\n`);
+  }
+})();

@@ -16,6 +16,13 @@ On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
 
 - `pinch-search "<query>"` / `pinch-get <id>` — resolve a recipe the owner names
   to its id (see the recipe-library skill).
+- `pinch-today [--json]` — what's planned for the household's REAL "today", with
+  the day resolved by the BACKEND in the household timezone (NOT UTC). The first
+  line is `today: <YYYY-MM-DD> (<tz>)` — the correct local "today"; then one line
+  per planned slot (`<slot>: <title>`, or `<slot>: note: <text>`). An empty day
+  prints just the `today:` line. Use this for "what's for dinner / what's planned
+  today", AND read its `today:` date as the anchor for every other date you work
+  out (see Dates). `--json` gives `{ accountPublicId, date, meals }`.
 - `pinch-plan [--week YYYY-MM-DD] [--json]` — read the week's plan. Plain output
   is one line per entry: a recipe entry shows `<date> <slot>: <recipe title>`, and
   a free-text NOTE entry shows `<date> <slot>: note: <text>`. A slot can hold more
@@ -35,11 +42,19 @@ On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
 
 ## Dates
 
-The helpers take concrete dates. Turn the owner's words into a `YYYY-MM-DD` in
-the CURRENT week unless they say otherwise: "Wednesday" → this week's Wednesday,
-"tomorrow" → tomorrow's date, "next Monday" → that date (pass its week with
-`--week` if it's a different week). If a day is ambiguous (already past this
-week), ask which week they mean rather than guessing.
+Anchor "today" to the backend, NOT to the system-prompt "Current date". That
+injected date renders in UTC, so in the evening Pacific it is already TOMORROW —
+trusting it makes you read the wrong day (a slot that's often empty → a false
+"nothing planned"). The real "today" is the `today:` line from `pinch-today`
+(the household-local date). Run `pinch-today` whenever you need "today" or "this
+week" and read its date as your anchor.
+
+The helpers take concrete dates. Work every relative day off that local anchor
+date (its week is "this week"): "today" → the anchor date, "tomorrow" → the day
+after it, "Wednesday" → this week's Wednesday, "next Monday" → that date (pass
+its week with `--week` if it's a different week). If a day is ambiguous (already
+past this week), ask which week they mean rather than guessing. This keeps both
+the nightly "what's for dinner" and the Sunday-night "this week" case correct.
 
 ## Plan a meal ("plan shakshuka for Wednesday dinner")
 
@@ -54,14 +69,20 @@ week), ask which week they mean rather than guessing.
 
 ## Answer what's planned ("what's for dinner?", "what's the week looking like")
 
-- `pinch-plan` and answer the specific question. "What's for dinner [tonight]" →
-  today's `dinner` line(s) (titles are already resolved in the output). "The week"
-  → a short day-by-day rundown. If nothing's planned, say so and offer to help plan.
+- "What's for dinner [tonight]" / "what's planned today" → `pinch-today` (NOT
+  `pinch-plan` with a self-picked day). Answer off its slot lines (titles are
+  already resolved); "what's for dinner" is the `dinner:` line(s). The backend
+  resolved the day in the household timezone, so this is right even late in the
+  Pacific evening.
+- "The week" / "what's the week looking like" → `pinch-plan` for the day-by-day
+  rundown. Its default week is "this week"; confirm that matches the `pinch-today`
+  anchor date's week, and read relative days off that anchor (see Dates).
+- If nothing's planned, say so and offer to help plan.
 - Read EVERY entry, not just the ones with a recipe. A note entry (shown as
   `note: <text>`) is a real, planned item: surface its day, slot, and the note
   text. Never call a slot empty just because it has no recipe, and never skip or
   invent around a note. If a slot holds both a recipe and a note, mention both. A
-  slot is only empty when `pinch-plan` prints no line for it at all.
+  slot is only empty when the helper prints no line for it at all.
 
 ## Hand off to the grocery list
 
