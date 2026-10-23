@@ -23,10 +23,12 @@
 // they are all real. An empty day prints just the `today:` line (and notes it on
 // stderr).
 //
-// The timezone is `PINCH_OWNER_TZ` (default America/Los_Angeles) — passed as the
-// `?tz=` param so it is tunable without a rebuild and is the per-user hook for a
-// future multi-user build. The backend also defaults to America/Los_Angeles when
-// no tz is supplied, so this is correct even if the env is unset.
+// Timezone is resolved BY THE BACKEND. We deliberately pass NO `?tz=`, so the
+// backend uses the owner's STORED account timezone (set via pinch-set-timezone),
+// falling back to its own env default (America/Los_Angeles) when none is stored.
+// Passing an explicit `?tz=` here would OVERRIDE a stored zone and defeat the
+// per-user setting, so we don't. The Pacific default is preserved by the
+// backend's own fallback. Change the owner's zone with the set-timezone skill.
 //
 // Reads PINCH_BACKEND_URL and PINCH_API_TOKEN from the environment.
 'use strict';
@@ -37,10 +39,11 @@ requireEnv(die);
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
-const tz = (process.env.PINCH_OWNER_TZ || 'America/Los_Angeles').trim();
 
 (async () => {
-  const { text } = await api(die, 'GET', `/api/pinch/plan/today?tz=${encodeURIComponent(tz)}`);
+  // No `?tz=` on purpose — the backend resolves "today" from the stored account
+  // timezone (or its Pacific default). See the header note.
+  const { text } = await api(die, 'GET', '/api/pinch/plan/today');
   const data = parse(die, text);
   const meals = Array.isArray(data.meals) ? data.meals : [];
 
@@ -49,9 +52,10 @@ const tz = (process.env.PINCH_OWNER_TZ || 'America/Los_Angeles').trim();
     return;
   }
 
-  // The resolved LOCAL date (the day the household is actually living) — the
-  // agent's "today" anchor. Always printed, even on an empty day.
-  process.stdout.write(`today: ${data.date} (${tz})\n`);
+  // The backend-resolved LOCAL date (the day the household is actually living),
+  // in the owner's stored timezone — the agent's "today" anchor. Always printed,
+  // even on an empty day.
+  process.stdout.write(`today: ${data.date}\n`);
 
   if (meals.length === 0) {
     process.stderr.write(`Nothing planned for ${data.date}\n`);

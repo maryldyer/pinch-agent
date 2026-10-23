@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+// pinch-set-timezone — read or set the owner's account timezone
+// (GET / PUT /api/pinch/account/timezone).
+//
+// Usage:
+//   pinch-set-timezone                      # READ the current zone
+//   pinch-set-timezone America/New_York     # SET the zone (IANA name)
+//   pinch-set-timezone --json               # read, raw { timezone }
+//
+// WHY it matters: the backend resolves the household's "today" (what's for
+// dinner tonight, the Cook-Tonight tile) from the STORED account timezone. If
+// the owner is in the wrong zone, "tonight" can land on the wrong day. Setting
+// their real zone here fixes it for every surface at once.
+//
+// The argument must be an IANA zone (e.g. America/New_York, America/Chicago,
+// America/Denver, America/Los_Angeles, America/Phoenix, Pacific/Honolulu). The
+// set-timezone skill maps the owner's words ("I'm in New York", "Eastern",
+// "I moved to Chicago") to the right IANA name before calling this.
+//
+// Exit codes: 0 ok, 2 bad usage / missing env, 3 invalid timezone (the backend
+// rejected the zone — ask the owner for their city), 4 backend unreachable,
+// 5 auth, 1 everything else.
+//
+// Reads PINCH_BACKEND_URL and PINCH_API_TOKEN (the FULL account token, like
+// pinch-save/pinch-plan-set) from the environment via lib/pinch-token.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+const { BASE, TOKEN, dieFor, requireEnv, parse } = require('./lib/pinch-http');
+const die = dieFor('pinch-set-timezone');
+requireEnv(die);
+
+const PATH = '/api/pinch/account/timezone';
+const args = process.argv.slice(2);
+const asJson = args.includes('--json');
+const zone = args.find((a) => a !== '--json');
+
+/** True if `tz` is a resolvable IANA timezone (same check the backend uses). */
+function isValidTimeZone(tz) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+(async () => {
+  const method = zone === undefined ? 'GET' : 'PUT';
+
+  // Fail fast on an obviously-bad zone so we never send garbage and can give the
+  // owner a clear nudge; the backend is still the source of truth (422 below).
+  if (method === 'PUT' && !isValidTimeZone(zone)) {
+    die(`"${zone}" is not a timezone I recognize. Tell me your city and I'll set it`, 3);
+  }
+
+  let res;
+  try {
+    const headers = { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' };
+    if (method === 'PUT') headers['Content-Type'] = 'application/json';
+    res = await fetch(`${BASE}${PATH}`, {
+      method,
+      headers,
+      body: method === 'PUT' ? JSON.stringify({ timezone: zone }) : undefined,
+    });
+  } catch (e) {
+    die(`backend unreachable: ${e.message}`, 4);
+  }
+  const text = await res.text();
+
+  // 422 = the backend rejected the zone. Surface it as the ask-for-the-city path
+  // (exit 3), distinct from a generic failure, so the skill knows what to do.
+  if (res.status === 422) {
+    die(`backend rejected "${zone}" as a timezone — ask the owner for their city`, 3);
+  }
+  if (res.status === 400) die('missing timezone (pass an IANA zone to set one)', 2);
+  if (!res.ok) {
+    die(`backend returned ${res.status}: ${text}`, res.status === 401 || res.status === 403 ? 5 : 1);
+  }
+
+  const data = parse(die, text);
+  if (asJson) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+  // `timezone` is the stored IANA zone, or null when none is set yet (the backend
+  // then falls back to its household default for day resolution).
+  if (method === 'PUT') {
+    process.stderr.write('Timezone saved\n');
+    process.stdout.write(`timezone: ${data.timezone}\n`);
+  } else {
+    process.stdout.write(`timezone: ${data.timezone === null ? '(not set, using the default)' : data.timezone}\n`);
+  }
+})();

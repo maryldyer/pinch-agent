@@ -18,7 +18,8 @@ On your PATH (`/opt/plow/pinch-bin`); they read `PINCH_BACKEND_URL` and
   to its id (see the recipe-library skill).
 - `pinch-today [--json]` — what's planned for the household's REAL "today", with
   the day resolved by the BACKEND in the household timezone (NOT UTC). The first
-  line is `today: <YYYY-MM-DD> (<tz>)` — the correct local "today"; then one line
+  line is `today: <YYYY-MM-DD>` — the correct local "today" (resolved in the
+  owner's stored timezone); then one line
   per planned slot (`<slot>: <title>`, or `<slot>: note: <text>`). An empty day
   prints just the `today:` line. Use this for "what's for dinner / what's planned
   today", AND read its `today:` date as the anchor for every other date you work
