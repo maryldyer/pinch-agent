@@ -1,14 +1,14 @@
 ---
 name: order-groceries
-description: Actually shop the owner's grocery list on Instacart via the browser (Latch) — open their already-logged-in Instacart session, add their items by clicking "Add" on their "Buy it again" products, and build the cart for them to check out. Use when the owner wants you to buy/order/shop their list ("order my groceries", "buy my groceries", "add my list to Instacart", "do my Instacart order", "shop my list"). This BUILDS the cart and stops; it never checks out or pays. It is NOT for building or editing the list itself (grocery-list skill) or for finding a product's aisle in a store you're standing in (grocery-finder skill).
+description: Actually shop the owner's grocery list on Instacart via the browser (Latch) — open their Instacart session (signing in with their email verification code if it's logged out), add their items by clicking "Add" on their "Buy it again" products, and build the cart for them to check out. Use when the owner wants you to buy/order/shop their list ("order my groceries", "buy my groceries", "add my list to Instacart", "do my Instacart order", "shop my list"). This BUILDS the cart and stops; it never checks out or pays. It is NOT for building or editing the list itself (grocery-list skill) or for finding a product's aisle in a store you're standing in (grocery-finder skill).
 ---
 # Order groceries (build the cart on Instacart)
 
 The owner wants their Pinch grocery list actually bought. You drive their own
-**logged-in Instacart session** with your browser tools (Latch) and build a cart,
-leaning on their "Buy it again" so they get their real brands. You **build the
-cart and stop** — you do NOT check out, pay, or place an order in this version.
-That stays the owner's to do on their device.
+Instacart session with your browser tools (Latch), signing in for them if it's
+logged out (step 1), and build a cart, leaning on their "Buy it again" so they get
+their real brands. You **build the cart and stop** — you do NOT check out, pay, or
+place an order in this version. That stays the owner's to do on their device.
 
 Read this whole skill before you touch the browser. The single most important
 thing here is **restraint**: a careful, light-touch pass that builds a cart beats
@@ -29,22 +29,38 @@ If the list is empty, say so and stop — there's nothing to order. If they name
 different list, resolve its id with `pinch-lists` first. Hold the item names in
 mind; those are what you'll match against "Buy it again".
 
-## 1. Open the logged-in session — do NOT force a login
+## 1. Open the session, and log in yourself if needed
 
-Open Instacart in the browser. **Assume the owner is already logged in** — this is
-a persistent session they signed into once in Latch, and it stays signed in.
+Open Instacart in the browser. The browser is **headless** — the owner can't see
+it or type into it, so there's no screen for them to log in on. If Instacart needs
+a login, **you do the whole login yourself**. Don't ask the owner to sign in and
+don't hand it off.
 
 - If you land in their storefront (you can see their account, their store, "Buy it
-  again"), good — go to step 2.
-- If you hit a **login wall / sign-in page / "logged out"**, **STOP**. Do NOT type
-  a username, do NOT enter credentials, do NOT touch a 2FA code or a CAPTCHA, even
-  though you may have vaulted credentials and general permission to sign in. For
-  grocery ordering specifically, a fresh login attempt is exactly what bounced
-  between login and storefront and tripped bot detection last time. Instead, tell
-  the owner warmly that you need them to log into Instacart once in Latch, then ask
-  you again. For example: "Looks like Instacart's logged out on my end. Pop into
-  Latch and sign into Instacart once, then tell me to go again and I'll fill the
-  cart." Then stop.
+  again"), you're already signed in — skip to step 2.
+- If you hit a **sign-in page or an email-code prompt**, log in end to end:
+
+  1. **Enter the owner's Instacart email** in the sign-in field and submit it.
+  2. **Trigger the verification code** (Instacart emails a one-time code). Note
+     roughly when you asked for it; you want the code from *this* request, not an
+     old one.
+  3. **Open the owner's email** in the browser (your Latch access reaches it) and
+     find the **most recent Instacart verification email** — the newest one, which
+     arrived just now *after* you triggered the code. Do NOT grab an older code
+     from an earlier email. If the top Instacart email looks stale (older than your
+     request), give it a moment and reload once for the fresh one. **Read ONLY the
+     Instacart verification code. Nothing else in the inbox is yours to read** —
+     not other messages, not their contents, not senders beyond spotting which one
+     is the Instacart code email.
+  4. **Enter that code** back on the Instacart prompt to finish signing in.
+  5. Once you're in the storefront, go to step 2 and build the cart.
+
+- Keep the same gentle discipline through the login as everywhere else (see step 4):
+  one deliberate action at a time, no rapid retries, no looping on the code box. If
+  a **CAPTCHA, a "verify you're human" wall, or any wall you genuinely can't pass**
+  appears, **STOP** and report cleanly — do not hammer it. Tell the owner you got
+  stuck at the Instacart login and exactly where, so they know the cart wasn't
+  built and nothing was ordered.
 
 ## 2. Add from "Buy it again" by clicking Add directly
 
@@ -110,7 +126,9 @@ couldn't find, go check out when you're ready.
   Checkout plus its safety gates come in a later version.
 - The list source is the existing consolidated grocery list (grocery-list skill);
   you only read it here, you don't change it.
-- Never print or repeat the owner's Instacart credentials or any token. You don't
-  handle the login at all in this flow.
+- You handle the login yourself when needed (step 1), but only ever read the
+  owner's email to find the Instacart verification code, nothing else. Never print
+  or repeat the owner's email, the verification code, any Instacart credential, or
+  any token, not in the reply and not in a summary.
 - Voice: no dashes as punctuation (commas, periods, parentheses). Answer first,
   then stop.
