@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# pinch-publish-story — publish ONE short, anonymized "use case" story to this
+# agent's AIWU (Agent Index) listing.
+#
+# Usage:
+#   pinch-publish-story <story_id> <title> [--body "..."] [--tag T]...(<=3) [--image URL]...
+#
+# Thin wrapper around the base's agent-index client (agent-index-client.py
+# --story), which authenticates with THIS install's OWN stored report-only key
+# (aik_...), read from the install's state dir by the client itself. It never
+# uses the Plow account token, and this wrapper never reads, prints, or passes a
+# key or token — the key stays entirely inside the client. Posting the same
+# <story_id> again UPDATES that story (the Index keys on story_id), so re-posting
+# a task-type's story refreshes it rather than duplicating/spamming.
+#
+# PRIVACY (stories are PUBLIC on the listing): the caller is responsible for
+# passing only anonymized, generic text — NEVER the owner's name, email, or any
+# identifying detail. This helper does not inspect content; the auto-story skill
+# carries the privacy rules.
+#
+# stdout: the client's result line (an HTTP code + the stored story JSON — no key
+# is ever in it). Exit: 0 on success, 2 on bad usage / missing client or python,
+# 1 if the publish itself failed (e.g. this install is not registered yet).
+set -euo pipefail
+
+prog=pinch-publish-story
+die() { printf '%s: %s\n' "$prog" "$1" >&2; exit "${2:-1}"; }
+
+[ "$#" -ge 2 ] || die 'usage: pinch-publish-story <story_id> <title> [--body "..."] [--tag T]...(<=3) [--image URL]...' 2
+
+story_id=$1; shift
+title=$1; shift
+[ -n "$story_id" ] || die 'story_id must not be empty' 2
+[ -n "$title" ] || die 'title must not be empty' 2
+
+body=''
+tags=()
+images=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --body)  [ "$#" -ge 2 ] || die '--body needs a value' 2; body=$2; shift 2 ;;
+    --tag)   [ "$#" -ge 2 ] || die '--tag needs a value' 2; tags+=("$2"); shift 2 ;;
+    --image) [ "$#" -ge 2 ] || die '--image needs a URL' 2; images+=("$2"); shift 2 ;;
+    *)       die "unknown argument: $1" 2 ;;
+  esac
+done
+
+# The Index stores at most 3 tags per story (it truncates); keep the contract
+# explicit here so a caller that over-tags is told, not silently trimmed.
+[ "${#tags[@]}" -le 3 ] || die "at most 3 tags (got ${#tags[@]})" 2
+
+AGENT_ID=${AGENT_ID:-pinch}
+CLIENT=${AGENT_INDEX_CLIENT:-/opt/plow/agent-index-client.py}
+[ -r "$CLIENT" ] || die "agent-index client not found at $CLIENT" 2
+
+PY=$(command -v python3 || true)
+[ -n "$PY" ] || die 'python3 not found on PATH' 2
+
+argv=("$CLIENT" --agent "$AGENT_ID" --story "$story_id" --title "$title")
+[ -n "$body" ] && argv+=(--body "$body")
+for t in ${tags[@]+"${tags[@]}"}; do argv+=(--tag "$t"); done
+for u in ${images[@]+"${images[@]}"}; do argv+=(--image "$u"); done
+
+# The install's report-only key lives under $HOME/.agent-index, and the base
+# runs this client with HOME pinned to the state volume (not the container's
+# /home/node), so `~` resolves to where the key actually is. Mirror that exactly
+# or the client looks in an empty home and reports "no stored key". The state
+# volume is OPENCLAW_STATE_DIR in a Plow container (/var/lib/plow).
+STATE_HOME=${OPENCLAW_STATE_DIR:-/var/lib/plow}
+
+# Hand off to the client. Its stdout/stderr are audited never to print the key;
+# we forward them and its exit code unchanged. A non-zero exit here means the
+# publish did not go through (commonly: this install has not registered yet).
+exec env HOME="$STATE_HOME" "$PY" "${argv[@]}"

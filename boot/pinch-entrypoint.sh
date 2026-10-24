@@ -169,4 +169,63 @@ seed_memory() {
 }
 seed_memory || true
 
+# Seed the AIWU "use case" stories (the listing's rolling "tasks this agent
+# completed" feed) ONCE per state volume. Stories post with THIS install's own
+# report-only key (minted by the base's Index client during boot), never the
+# Plow account token; pinch-publish-story wraps agent-index-client.py --story and
+# the key never leaves that client. The three seeds are REAL Pinch capabilities,
+# anonymized (no owner PII — stories are PUBLIC). Their stable ids match the
+# auto-story skill's per-task-type ids, so a genuine task later REFRESHES the
+# same story rather than adding a duplicate.
+#
+# Gated by a marker so a warm reboot does not clobber a fresher runtime story the
+# auto-story skill may have posted under the same id. A redeploy lands on a fresh
+# volume (new install, new key) with no marker, so the seeds re-post there.
+# Best-effort and bounded: it waits for this install to finish registering, and
+# if that never happens in the window it leaves the marker unset so a later boot
+# retries. Never blocks or fails the agent (a texting agent must boot regardless).
+PINCH_STORIES_MARKER=/var/lib/plow/.pinch-stories-seeded
+PINCH_INDEX_CLIENT=/opt/plow/agent-index-client.py
+PINCH_PUBLISH=/opt/plow/pinch-bin/pinch-publish-story
+seed_stories() {
+  [ -e "$PINCH_STORIES_MARKER" ] && return 0
+  [ -r "$PINCH_INDEX_CLIENT" ] && [ -x "$PINCH_PUBLISH" ] || return 0
+  # `status` reads local state only (0 registered, 3 not, 2 unreadable). Wait
+  # for the base to register this install before posting with its key. The key
+  # lives under $HOME/.agent-index and the base pins HOME to the state volume,
+  # so read status with the SAME HOME or it looks in an empty home and never
+  # sees the registration (pinch-publish-story applies the same pin itself).
+  stories_home=${OPENCLAW_STATE_DIR:-/var/lib/plow}
+  registered=
+  for _ in $(seq 1 60); do
+    if HOME="$stories_home" python3 "$PINCH_INDEX_CLIENT" status >/dev/null 2>&1; then registered=1; break; fi
+    sleep 5
+  done
+  if [ -z "$registered" ]; then
+    echo "[pinch] stories: install not registered yet; will seed on a later boot" >&2
+    return 0
+  fi
+  ok=1
+  "$PINCH_PUBLISH" pinch-uc-photo-recipe "Saved a recipe from a texted photo." \
+    --body "Someone texted a dish they loved. Pinch read the photo, pulled the recipe together, and saved it to their library, image and all, in a few seconds." \
+    --tag recipes --tag photo --tag library \
+    --image https://pinch.usesundays.com/aiwu/02-recipes.png >/dev/null 2>&1 || ok=
+  "$PINCH_PUBLISH" pinch-uc-week-grocery "Turned a week of meals into one grocery list." \
+    --body "Picked the week's dinners and Pinch built a single consolidated grocery list, ingredients combined and grouped by aisle, ready to shop." \
+    --tag meal-plan --tag groceries --tag planning \
+    --image https://pinch.usesundays.com/aiwu/06-grocery-list.png >/dev/null 2>&1 || ok=
+  "$PINCH_PUBLISH" pinch-uc-wine-pairing "Paired a wine with tonight's dinner." \
+    --body "Asked what to pour with dinner. Pinch looked at what was planned and suggested a crisp, bright white that played well with the dish, no guesswork." \
+    --tag wine --tag pairing --tag dinner \
+    --image https://pinch.usesundays.com/aiwu/01-chat.png >/dev/null 2>&1 || ok=
+  if [ -n "$ok" ]; then
+    : > "$PINCH_STORIES_MARKER" 2>/dev/null || true
+    echo "[pinch] seeded 3 AIWU use-case stories"
+  else
+    echo "[pinch] WARN: could not seed all AIWU stories; will retry on a later boot" >&2
+  fi
+  return 0
+}
+seed_stories &
+
 exec node /opt/plow/boot/main.js
