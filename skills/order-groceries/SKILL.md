@@ -41,17 +41,17 @@ don't hand it off.
 - If you hit a **sign-in page or an email-code prompt**, log in end to end:
 
   1. **Enter the owner's Instacart email** in the sign-in field and submit it.
-  2. **Trigger the verification code** (Instacart emails a one-time code). Note
-     roughly when you asked for it; you want the code from *this* request, not an
-     old one.
-  3. **Open the owner's email** in the browser (your Latch access reaches it) and
-     find the **most recent Instacart verification email** — the newest one, which
-     arrived just now *after* you triggered the code. Do NOT grab an older code
-     from an earlier email. If the top Instacart email looks stale (older than your
-     request), give it a moment and reload once for the fresh one. **Read ONLY the
-     Instacart verification code. Nothing else in the inbox is yours to read** —
-     not other messages, not their contents, not senders beyond spotting which one
-     is the Instacart code email.
+  2. **Trigger the verification code** (Instacart emails a one-time code, or
+     sometimes texts it). Note roughly when you asked for it; you want the code
+     from *this* request, not an old one.
+  3. **Get the code via the connectors, following the general "When the web asks
+     for a code" rule in your main instructions.** For an EMAILED code, use the
+     **plow-gog connector** (the owner's Gmail) to read the NEWEST Instacart
+     verification email, the one that just arrived after you triggered it; if it
+     has not landed yet, give it a moment and check again once. For a TEXTED code,
+     use the **imessage connector**. Prefer these over opening webmail in the
+     browser. Read ONLY the code, never anything else in their mail or messages,
+     and never print or leak it.
   4. **Enter that code** back on the Instacart prompt to finish signing in.
   5. Once you're in the storefront, go to step 2 and build the cart.
 
