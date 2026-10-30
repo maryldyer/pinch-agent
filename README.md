@@ -26,12 +26,17 @@ test/                             Node built-in-runner unit tests for the boot/o
 ## Base image
 
 ```
-public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ddbaa6bc0f9e071d9411777b91590e755e367d84@sha256:5b0ebf5e33514b09f0f22f1c14424a19b4eb3fc21adfaeb260002f76d362478c
+public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-e04b69b5081f20435f926803716bc842caf58923@sha256:dd253a0a186009cc59c81ed366cc9a1a09987335e2018436d96a05a90c354f80
 ```
 
 Pinned by digest (multi-arch: linux/amd64 + linux/arm64). The tag names the
 commit of `plow-pbc/plow-openclaw-agent` that built it. The base lives in a
 public ECR registry and pulls anonymously — no registry auth to build.
+
+This is the new **Latch** base (`plow-openclaw-agent` main @ `e04b69b`, 2026-10-29):
+it reaches the owner's machines through latch only (the old Mac relay is dropped),
+ships + installs the latch CLI at build/boot, and sets `LATCH_STATE_DIR=/var/lib/plow/latch`
+on the state volume — so no Latch env/config is needed in this variant beyond the `FROM`.
 
 ## Configuration (env / secrets)
 

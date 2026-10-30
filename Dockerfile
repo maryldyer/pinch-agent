@@ -5,10 +5,14 @@
 # actually boots (a tag is a name someone can move, and this image boots holding
 # a live Plow credential). Base is published to a public ECR registry and is
 # pullable anonymously — no registry auth needed to build.
-#   repo commit: d2ac276cac263f86c4d7f537178e175269fbdbc3
-# (base bump: fixes the 30-min "All automations healthy" heartbeat texts + the
-#  NO_REPLY-ending replies; plow-openclaw-agent #91/#43.)
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-d2ac276cac263f86c4d7f537178e175269fbdbc3@sha256:1349218b88f2b2ce2684b0aa75e7dc5b8e3dcc2537959dbd9b3ac9b3ee511705
+#   repo commit: e04b69b5081f20435f926803716bc842caf58923
+# (base bump 2026-10-30: the new Latch base — reaches the owner's machines through
+#  latch only and DROPS the old Mac relay; ships + installs latch at build/boot and
+#  sets LATCH_STATE_DIR=/var/lib/plow/latch on the state volume. plow-openclaw-agent
+#  main @ e04b69b, the "latch-only" series #132/#133/#134, 2026-10-29 (post-Oct-28).)
+# ⚠️ On this base digest bump, RE-VERIFY the entrypoint model pre-seed drift check
+#  (boot/pinch-entrypoint.sh) against the new base's fresh config render before build.
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-e04b69b5081f20435f926803716bc842caf58923@sha256:dd253a0a186009cc59c81ed366cc9a1a09987335e2018436d96a05a90c354f80
 
 # --- Pinch backend wiring -------------------------------------------------
 # Non-secret base URL of the live recipe backend the capture/library skills call.
