@@ -1,14 +1,15 @@
 ---
 name: order-groceries
-description: Actually shop the owner's grocery list on Instacart via the browser (Latch) — open their Instacart session (signing in with their email verification code if it's logged out), add their items by clicking "Add" on their "Buy it again" products, and build the cart for them to check out. Use when the owner wants you to buy/order/shop their list ("order my groceries", "buy my groceries", "add my list to Instacart", "do my Instacart order", "shop my list"). This BUILDS the cart and stops; it never checks out or pays. It is NOT for building or editing the list itself (grocery-list skill) or for finding a product's aisle in a store you're standing in (grocery-finder skill).
+description: Actually shop the owner's grocery list on Instacart via the browser (Latch) — open their Instacart session (signing in with their email verification code if it's logged out), add their items by clicking "Add" on their "Buy it again" products, then review the cart and place the order. Use when the owner wants you to buy/order/shop their list ("order my groceries", "buy my groceries", "add my list to Instacart", "do my Instacart order", "shop my list"). This builds the cart AND checks out (places the order) when they ask; it spends only because they asked, never on its own. It is NOT for building or editing the list itself (grocery-list skill) or for finding a product's aisle in a store you're standing in (grocery-finder skill).
 ---
-# Order groceries (build the cart on Instacart)
+# Order groceries (build the cart and check out on Instacart)
 
 The owner wants their Pinch grocery list actually bought. You drive their own
 Instacart session with your browser tools (Latch), signing in for them if it's
-logged out (step 1), and build a cart, leaning on their "Buy it again" so they get
-their real brands. You **build the cart and stop** — you do NOT check out, pay, or
-place an order in this version. That stays the owner's to do on their device.
+logged out (step 1), build a cart, leaning on their "Buy it again" so they get
+their real brands, then **review the cart and place the order** (step 5). You do
+this when the owner asks you to order/buy/shop their list; you are spending on
+their behalf only because they asked for this order, never on your own initiative.
 
 Read this whole skill before you touch the browser. The single most important
 thing here is **restraint**: a careful, light-touch pass that builds a cart beats
@@ -100,30 +101,42 @@ Instacart watches for bot-like behavior. Move like a careful person, not a scrip
   retry, do not reload, do not try to solve it. Note where you were and report
   cleanly (step 5). Hammering is exactly what got the session blocked before.
 
-## 5. Stop at the built cart and report (hostess voice)
+## 5. Review the cart, place the order, and report (hostess voice)
 
-When you've gone through the list once, **stop at the built cart. Do NOT check
-out, do NOT pay, do NOT place the order.** Tell the owner, in your normal warm,
-brief voice (answer first, no dashes):
+When you've gone through the list once, go to the cart and **review it** first:
+confirm the items and quantities look right. Then proceed to checkout and **place
+the order.** Checkout uses the owner's existing Instacart delivery address,
+delivery/pickup slot, and saved payment method. If Instacart needs a required
+checkout detail that isn't set (no saved payment method, no address, or it makes
+you choose a delivery slot and none is clearly the owner's usual), **don't guess
+and don't thrash:** stop at the reviewed cart, leave it ready, and tell the owner
+exactly what checkout still needs so they can finish it. Keep the same gentle
+discipline here as everywhere else: checkout is a couple of deliberate actions
+(open cart, confirm, place), never a flurry.
 
-- what you **added** (the items now in the cart),
+Then tell the owner, in your normal warm, brief voice (answer first, no dashes):
+
+- what you **ordered** (the items now placed),
 - what you **couldn't add** (not in Buy-it-again and no clean search match, or
   skipped) so they can grab those themselves,
-- and that the cart's built and ready for them to review and check out on
-  Instacart. The checkout is theirs; you don't place orders yet.
+- and the confirmation in plain terms: that it's placed, plus the delivery or
+  pickup window if Instacart showed one.
 
-If you stopped early (login wall from step 1, or a block from step 4), say exactly
-where you stopped and what's in the cart so far, so nothing is a mystery. Offer to
-pick up again once they've sorted the login, if that's what happened.
+If you stopped early (a login wall from step 1, a block from step 4, or a missing
+checkout detail above), say exactly where you stopped and what's in the cart so
+far, so nothing is a mystery. Offer to pick up again once they've sorted it.
 
-Keep it tight. A couple of lines: here's what's in your cart, here's what I
-couldn't find, go check out when you're ready.
+Keep it tight. A couple of lines: here's what I ordered, here's what I couldn't
+find, and it's on its way (or: here's what Instacart still needs from you).
 
 ## Notes
 
-- **Build only, never buy.** This version stops at a built cart on purpose. You
-  never check out, pay, confirm, or place an order, no matter how it's phrased.
-  Checkout plus its safety gates come in a later version.
+- **Order when asked.** When the owner asks you to order/buy/shop their list, you
+  build the cart and place the order (step 5). You spend on their behalf only
+  because they asked for this order: never place an order they didn't ask for, and
+  never on your own initiative. Checkout relies on the owner's Instacart account
+  already having a saved payment method, a delivery address, and an available
+  delivery/pickup slot; if one is missing, stop cleanly and tell them (step 5).
 - The list source is the existing consolidated grocery list (grocery-list skill);
   you only read it here, you don't change it.
 - You handle the login yourself when needed (step 1), but only ever read the
