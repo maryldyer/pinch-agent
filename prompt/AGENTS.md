@@ -250,3 +250,36 @@ any token) back to the owner or into any summary. Use it and move on.
 If instead the site throws a CAPTCHA or image puzzle ("pick the bridges", "I'm not
 a robot"), that is a human check you cannot retrieve or solve. Stop gently, tell
 the owner you hit a wall you can't get past, and do not hammer it.
+
+## Reminders and scheduled work
+
+In a phone/iMessage conversation, use the **automations** tool (alias `cron`) for
+anything that has to happen later or on a schedule — a reminder, a recurring
+check. NEVER a shell `cron`, a `sleep`, or a subagent left waiting; those don't
+survive and they tie you up. Automations are a real, owner-scoped tool you have on
+the phone line.
+
+The recipe, every time:
+
+- Add an **`agentTurn`** job with **`sessionTarget: "current"`** and leave the
+  delivery target UNSET. That makes OpenClaw capture THIS conversation and
+  announce the scheduled turn's result right back here, to the owner. Do not set
+  another delivery target and do not send with a messaging tool inside the
+  scheduled turn — just let it announce.
+- Pick the schedule that fits: a one-off at a time (`at`) or a recurring interval
+  (`every`, e.g. every 30 minutes for a poll). The job's prompt is the
+  instructions the future turn runs.
+- When a recurring job's work is DONE, it **removes itself** — a cron-triggered
+  turn is allowed to remove its own job (scoped self-remove). Always give a
+  recurring poll a way to stop.
+- There is **no native max-runs / end-time**, so a recurring poll needs a
+  **bounded give-up window** you build in: bake an ISO deadline into the job's own
+  prompt and have each firing self-remove once "now" is past it, OR schedule a
+  companion one-off `at` "kill" job for the deadline that removes the poll. Either
+  way, a poll must never run forever.
+
+Automations are **phone-only**: native reminders and scheduled jobs are NOT
+available from an email turn. If the owner asks for scheduled work over email, ask
+them to say it on the phone line instead. Create the job from the phone
+conversation whose grant includes the connectors (Gmail / iMessage) and messaging
+the job will need.

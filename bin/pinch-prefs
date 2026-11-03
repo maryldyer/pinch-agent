@@ -1,0 +1,242 @@
+#!/usr/bin/env node
+// pinch-prefs — the owner's grocery purchasing-preference memory (§4.1/§4.3/§4.4).
+//
+// Subcommands the preference + order skills use:
+//
+//   pinch-prefs derive "<ingredient line>" ["<line>" ...]
+//       Print the §4.2 form_key for each line (one per line). Pure/local — no
+//       network. Use this to key an ingredient consistently (the SAME derivation
+//       the gap-check and order-time apply use), e.g. before asking or saving.
+//
+//   pinch-prefs unknown [--max N] [--derive] "<formKey-or-line>" [...]
+//       GET /api/pinch/preferences/unknown — of the given keys, print ONLY the
+//       ones with no saved preference yet (the §4.3 gap-check: ask about these,
+//       never re-ask the rest). `--max N` returns at most N (the ≤2 drip).
+//       `--derive` treats the args as raw ingredient lines and derives the
+//       form_key for each first. `--json` for `{ unknown: [...] }`.
+//
+//   pinch-prefs get [--derive] "<formKey-or-line>" [...]
+//       GET /api/pinch/preferences — read the stored pref (brand/organic/driver)
+//       for each key, for order-time apply (§4.4). Keys with no row are absent
+//       (unknown → the store is the authority; BIA is the hint). `--derive` to
+//       pass raw ingredient lines. `--json` for `{ preferences: [...] }`.
+//
+//   pinch-prefs driver
+//       GET /api/pinch/preferences/driver — the account's global price-vs-brand
+//       lean (§4.4.5): `price`, `brand`, or balanced. `--json` for `{ driver }`.
+//
+//   pinch-prefs set-driver <price|brand|clear>
+//       PUT /api/pinch/preferences/driver — set the global lean (§4.4.5 ③a):
+//       `price`, `brand`, or `clear` (reset to balanced). `--json` for `{ driver }`.
+//
+//   pinch-prefs upsert --form-key "<k>" --source this_or_that|post_delivery
+//                      [--derive] [--brand "<b>" | --no-brand]
+//                      [--organic yes|no|no_preference] [--driver price|brand]
+//       PUT /api/pinch/preferences — save the owner's answer for one form_key.
+//       `--derive` keys a raw phrase through deriveFormKey first (so a
+//       post-delivery correction lands on the same key order-time reads).
+//       `--json` for the stored `{ preference }`.
+//
+// Reads PINCH_BACKEND_URL + the account FULL token (cached pair, else
+// PINCH_API_TOKEN) from the environment, like the other backend helpers.
+//
+// Exit codes: 0 ok, 2 bad usage / missing env, 4 backend unreachable, 5 auth
+// (401/403), 1 everything else.
+'use strict';
+process.stdout.on('error', (e) => { if (e && e.code === 'EPIPE') process.exit(0); throw e; });
+
+const { BASE, TOKEN, dieFor, requireEnv } = require('./lib/pinch-http');
+const { deriveFormKey } = require('./lib/form-key');
+const { gapCheck, readPreferences, getDriverDefault, setDriverDefault, upsertPreference } = require('./lib/prefs');
+
+const die = dieFor('pinch-prefs');
+const argv = process.argv.slice(2);
+const sub = argv[0];
+const rest = argv.slice(1);
+const asJson = rest.includes('--json');
+
+/** Pull `--flag value` (returns the value or undefined); mutates nothing. */
+function flag(name) {
+  const i = rest.indexOf(name);
+  return i >= 0 && i + 1 < rest.length ? rest[i + 1] : undefined;
+}
+/** Positional (non-flag, non-flag-value) args. */
+function positionals(valueFlags) {
+  const out = [];
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i];
+    if (a.startsWith('--')) {
+      if (valueFlags.has(a)) i += 1; // skip its value
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+function ctx() {
+  return { backendUrl: BASE, token: TOKEN, fetchImpl: fetch };
+}
+
+async function cmdDerive() {
+  const lines = positionals(new Set());
+  if (lines.length === 0) die('usage: pinch-prefs derive "<ingredient line>" [...]', 2);
+  const keys = lines.map(deriveFormKey);
+  if (asJson) {
+    process.stdout.write(JSON.stringify({ formKeys: keys }, null, 2) + '\n');
+  } else {
+    for (const k of keys) process.stdout.write(`${k}\n`);
+  }
+}
+
+async function cmdUnknown() {
+  requireEnv(die);
+  const valueFlags = new Set(['--max']);
+  let keys = positionals(valueFlags);
+  if (keys.length === 0) die('usage: pinch-prefs unknown [--max N] [--derive] "<key>" [...]', 2);
+  if (rest.includes('--derive')) keys = keys.map(deriveFormKey).filter(Boolean);
+  const maxRaw = flag('--max');
+  const max = maxRaw === undefined ? undefined : Number.parseInt(maxRaw, 10);
+  if (maxRaw !== undefined && !(Number.isInteger(max) && max >= 0)) {
+    die('--max must be a non-negative integer', 2);
+  }
+  let out;
+  try {
+    out = await gapCheck(ctx(), keys, { max });
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) die(`auth failed: ${e.message}`, 5);
+    if (e.status === undefined) die(`backend unreachable: ${e.message}`, 4);
+    die(e.message, 1);
+  }
+  if (asJson) {
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+  } else {
+    for (const k of out.unknown) process.stdout.write(`${k}\n`);
+  }
+}
+
+async function cmdUpsert() {
+  requireEnv(die);
+  const formKey = flag('--form-key');
+  const source = flag('--source');
+  if (!formKey) die('usage: pinch-prefs upsert --form-key "<k>" --source <this_or_that|post_delivery> [...]', 2);
+  if (!source) die('--source is required (this_or_that|post_delivery)', 2);
+  // `--derive` treats --form-key as a raw ingredient/product phrase and keys it
+  // through the SAME deriveFormKey the gap-check/apply use, so a post-delivery
+  // correction lands on the identical key order-time reads.
+  const key = rest.includes('--derive') ? deriveFormKey(formKey) : formKey;
+  if (!key) die('--form-key derived to an empty key', 2);
+  const pref = { formKey: key, source };
+  if (rest.includes('--no-brand')) pref.brand = null;
+  else if (flag('--brand') !== undefined) pref.brand = flag('--brand');
+  if (flag('--organic') !== undefined) pref.organic = flag('--organic');
+  if (flag('--driver') !== undefined) pref.driverOverride = flag('--driver');
+  let data;
+  try {
+    data = await upsertPreference(ctx(), pref);
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) die(`auth failed: ${e.message}`, 5);
+    if (e.status === 400 || e.status === 422) die(`backend rejected the preference: ${e.message}`, 2);
+    if (e.status === undefined && /is required|must be one of/.test(e.message)) die(e.message, 2);
+    if (e.status === undefined) die(`backend unreachable: ${e.message}`, 4);
+    die(e.message, 1);
+  }
+  if (asJson) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+  } else {
+    const p = data.preference || {};
+    process.stderr.write('Preference saved\n');
+    process.stdout.write(
+      `form_key: ${p.formKey}\nbrand: ${p.brand ?? '(none)'}\norganic: ${p.organic}\n` +
+        `driver: ${p.driverOverride ?? '(account default)'}\nsource: ${p.source}\n`,
+    );
+  }
+}
+
+async function cmdGet() {
+  requireEnv(die);
+  let keys = positionals(new Set());
+  if (keys.length === 0) die('usage: pinch-prefs get [--derive] "<formKey-or-line>" [...]', 2);
+  if (rest.includes('--derive')) keys = keys.map(deriveFormKey).filter(Boolean);
+  let out;
+  try {
+    out = await readPreferences(ctx(), keys);
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) die(`auth failed: ${e.message}`, 5);
+    if (e.status === undefined) die(`backend unreachable: ${e.message}`, 4);
+    die(e.message, 1);
+  }
+  if (asJson) {
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+    return;
+  }
+  // Plain: one line per stored pref; keys with no row are simply absent (unknown).
+  if (out.preferences.length === 0) {
+    process.stdout.write('(no stored preferences for those keys)\n');
+    return;
+  }
+  for (const p of out.preferences) {
+    process.stdout.write(
+      `${p.formKey}: brand=${p.brand ?? '(none)'} organic=${p.organic} ` +
+        `driver=${p.driverOverride ?? '(account default)'} [${p.source}]\n`,
+    );
+  }
+}
+
+async function cmdDriver() {
+  requireEnv(die);
+  let out;
+  try {
+    out = await getDriverDefault(ctx());
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) die(`auth failed: ${e.message}`, 5);
+    if (e.status === undefined) die(`backend unreachable: ${e.message}`, 4);
+    die(e.message, 1);
+  }
+  if (asJson) {
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+  } else {
+    process.stdout.write(`driver: ${out.driver ?? '(balanced)'}\n`);
+  }
+}
+
+async function cmdSetDriver() {
+  requireEnv(die);
+  const arg = positionals(new Set())[0];
+  if (arg === undefined) die("usage: pinch-prefs set-driver <price|brand|clear>", 2);
+  // Local enum validation before the call (same discipline as upsert): accept
+  // 'price'|'brand', or 'clear' (also 'balanced'/'none') to reset to balanced.
+  let driver;
+  if (arg === 'price' || arg === 'brand') driver = arg;
+  else if (arg === 'clear' || arg === 'balanced' || arg === 'none') driver = null;
+  else die(`set-driver takes 'price', 'brand', or 'clear' (got "${arg}")`, 2);
+  let out;
+  try {
+    out = await setDriverDefault(ctx(), driver);
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) die(`auth failed: ${e.message}`, 5);
+    if (e.status === 400 || e.status === 422) die(`backend rejected the driver: ${e.message}`, 2);
+    if (e.status === undefined && /must be one of/.test(e.message)) die(e.message, 2);
+    if (e.status === undefined) die(`backend unreachable: ${e.message}`, 4);
+    die(e.message, 1);
+  }
+  if (asJson) {
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+  } else {
+    process.stderr.write('Lean saved\n');
+    process.stdout.write(`driver: ${out.driver ?? '(balanced)'}\n`);
+  }
+}
+
+(async () => {
+  switch (sub) {
+    case 'derive': return cmdDerive();
+    case 'unknown': return cmdUnknown();
+    case 'get': return cmdGet();
+    case 'driver': return cmdDriver();
+    case 'set-driver': return cmdSetDriver();
+    case 'upsert': return cmdUpsert();
+    default:
+      die('usage: pinch-prefs <derive|unknown|get|driver|set-driver|upsert> … (see the grocery-preferences skill)', 2);
+  }
+})();

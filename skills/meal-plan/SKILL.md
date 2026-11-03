@@ -94,6 +94,12 @@ add any they're out of). Generate refreshes the plan items and leaves anything
 they'd already hand-added on the list alone. Confirm with the list read back,
 short. Then the grocery-list skill handles checking things off while they shop.
 
+This plan→list moment — and any "what's for dinner" where the owner is engaged —
+is also a natural time to quietly learn ONE brand/organic preference you don't
+already know (the grocery-preferences skill): a light this-or-that about an
+ingredient that matters, saved so you never re-ask. Keep it to the drip rules
+there (≤2, only unknowns, skip it if the moment's wrong); never make it a survey.
+
 ## Replying (SMS-appropriate)
 
 - Short, answer first. A plan confirmation is one line; "what's the week" is a
