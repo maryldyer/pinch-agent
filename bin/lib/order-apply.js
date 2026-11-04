@@ -1,10 +1,13 @@
 'use strict';
 // order-apply.js — the DETERMINISTIC order-time decision for ONE grocery item
-// (§4.4 apply-at-order + §4.4.5/§4.6 deal-breaker). Pure logic, no network: the
-// order-groceries skill gathers the facts from Instacart (what's on Buy-it-again,
-// what one search surfaced, what's cheapest) and the stored pref/lean from the
-// pinch-prefs helper, then calls these to decide what to add — so the policy is
-// consistent and testable instead of re-reasoned per item by the model.
+// (§4.4 apply-at-order + §4.4.5/§4.6 deal-breaker). Pure logic, no network.
+//
+// This is a tested policy ORACLE, NOT a runtime-invoked path: the order-groceries
+// skill does not shell out to it. The skill's PROSE decision tree mirrors this
+// logic in words, and these functions encode the same rules as executable,
+// unit-tested truth — so the written policy is pinned down and can't silently
+// drift. (If a `pinch-prefs decide` subcommand is ever added, the agent could call
+// it directly; today the agent follows the prose and this file guards it in tests.)
 //
 // Two invariants from the spec live HERE so they can't drift:
 //   • The RECIPE FORM is authoritative (§4.2/§6②). These functions decide only
